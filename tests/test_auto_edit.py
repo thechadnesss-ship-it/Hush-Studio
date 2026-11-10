@@ -89,6 +89,15 @@ def test_long_pause_capped_and_locked_respected():
     assert short.new_length == pytest.approx(0.5)                    # ordinary pause keeps its length
 
 
+def test_induction_markers_use_shorter_pause_but_normal_markers_do_not():
+    speech = [(200.0, 201.0), (204.0, 205.0), (400.0, 401.0),
+              (404.0, 405.0), (800.0, 801.0), (804.0, 805.0),
+              (806.0, 807.0)]
+    pauses = shape_pauses(speech, 810.0, AutoEditConfig(), markers=[1, 3, 5])
+    markers = [p for p in pauses if p.kind == "marker"]
+    assert [p.new_length for p in markers] == [5.0, 5.0, 10.0]
+
+
 @pytest.mark.skipif(not RAW.exists(), reason="Sam's raw reference take not present")
 def test_real_take_reproduces_her_edit():
     from core.session import load_mono_48k

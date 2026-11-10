@@ -28,6 +28,9 @@ class AutoEditConfig:
     silence_pauses: bool = True
     marker_detect: bool = True
     marker_pause_s: float = 10.0       # her edit: 9–13 s, median ≈ 10
+    induction_marker_pause_s: float | None = 5.0  # shorter pauses in the induction
+    induction_end_s: float = 720.0                # early marker phase ends ~12 min in
+    induction_min_start_s: float = 180.0          # avoid changing short takes/tests
     marker_len_s: tuple[float, float] = (0.6, 1.8)
     marker_sim: float = 0.80           # detection threshold vs the marker template
     cluster_sim: float = 0.85          # "near-identical" for discovering the marker
@@ -91,6 +94,7 @@ def shape_pauses(speech: list[tuple[float, float]], duration: float, cfg: AutoEd
     mset = set(markers or [])
     kept = [p for i, p in enumerate(speech) if i not in mset]
     marker_spans = [speech[i] for i in sorted(mset)]
+    has_induction_phase = bool(marker_spans) and marker_spans[0][0] >= cfg.induction_min_start_s
 
     def overlaps_cut(a: float, b: float) -> bool:
         return any(a < ce and cs < b for cs, ce in cuts)
@@ -106,7 +110,12 @@ def shape_pauses(speech: list[tuple[float, float]], duration: float, cfg: AutoEd
         has_marker = any(a_end <= ms and me <= b_start for ms, me in marker_spans)
         length = b_start - a_end
         if has_marker:
-            out.append(Pause(a_end, b_start, cfg.marker_pause_s, kind="marker"))
+            marker_start = min(ms for ms, me in marker_spans if a_end <= ms and me <= b_start)
+            marker_pause_s = cfg.marker_pause_s
+            if (has_induction_phase and cfg.induction_marker_pause_s is not None
+                    and cfg.induction_min_start_s <= marker_start < cfg.induction_end_s):
+                marker_pause_s = cfg.induction_marker_pause_s
+            out.append(Pause(a_end, b_start, marker_pause_s, kind="marker"))
         elif length > cfg.cap_pause_s:
             out.append(Pause(a_end, b_start, cfg.cap_pause_s))
         elif cfg.silence_pauses:
