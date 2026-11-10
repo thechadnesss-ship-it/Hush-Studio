@@ -66,7 +66,7 @@ class ReviewDialog(QDialog):
             self._show_capture(capture)
 
         # --- cuts
-        lay.addWidget(QLabel("Cuts (planes and noise). Untick to keep that part."))
+        lay.addWidget(QLabel("Cuts (planes, noise, flubs). Untick to keep that part; proposed flub cuts wait for Accept or Undo."))
         self.cuts = QTableWidget(0, 5)
         self.cuts.setHorizontalHeaderLabels(["At", "Length", "Why", "Cut", ""])
         self.cuts.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -146,10 +146,23 @@ class ReviewDialog(QDialog):
             self.cuts.setItem(r, 0, QTableWidgetItem(fmt_mmss(c.start)))
             self.cuts.setItem(r, 1, QTableWidgetItem(f"{c.length:.1f} s"))
             self.cuts.setItem(r, 2, QTableWidgetItem(c.reason))
-            box = QCheckBox()
-            box.setChecked(not c.keep)
-            box.toggled.connect(lambda on, c=c: (setattr(c, "keep", not on), self._update()))
-            self.cuts.setCellWidget(r, 3, _centered(box))
+            if c.proposed:
+                self.cuts.setItem(r, 2, QTableWidgetItem(f"{c.reason} (proposed)"))
+                w = QWidget()
+                h = QHBoxLayout(w)
+                h.setContentsMargins(0, 0, 0, 0)
+                acc, und = QPushButton("Accept cut"), QPushButton("Undo")
+                acc.setObjectName("primary")
+                acc.clicked.connect(lambda _=False, c=c: self._decide(c, True))
+                und.clicked.connect(lambda _=False, c=c: self._decide(c, False))
+                h.addWidget(acc)
+                h.addWidget(und)
+                self.cuts.setCellWidget(r, 3, w)
+            else:
+                box = QCheckBox()
+                box.setChecked(not c.keep)
+                box.toggled.connect(lambda on, c=c: (setattr(c, "keep", not on), self._update()))
+                self.cuts.setCellWidget(r, 3, _centered(box))
             self.cuts.setCellWidget(r, 4, self._play_btn(c.start, c.end))
         self.markers.setRowCount(0)
         for p in [p for p in self.edl.pauses if p.kind == "marker"]:
@@ -163,6 +176,10 @@ class ReviewDialog(QDialog):
             self.markers.setCellWidget(r, 2, _centered(box))
             self.markers.setCellWidget(r, 3, self._play_btn(p.start, p.end))
         self._update()
+
+    def _decide(self, c, accept: bool) -> None:
+        c.accept() if accept else c.undo()
+        self._fill()
 
     def _play_btn(self, a: float, b: float) -> QPushButton:
         btn = QPushButton("▶  Listen")
@@ -191,9 +208,15 @@ class ReviewDialog(QDialog):
         cuts = s["cuts"]
         planes = cuts.get("plane", {"count": 0, "removed_s": 0})
         n_mark = sum(p.kind == "marker" for p in self.edl.pauses)
+        pending = sum(c.proposed for c in self.edl.cuts)
+        flubs = sum(c.reason == "flub" and not c.keep for c in self.edl.cuts)
+        extra = (f"{flubs} flub cut{'s' if flubs != 1 else ''} accepted" if flubs or pending else "")
+        if pending:
+            extra += f", {pending} waiting for you"
         self.summary.setText(
             f"{planes['count']} plane cut{'s' if planes['count'] != 1 else ''} "
             f"({fmt_hms(planes['removed_s']).replace('0h ', '')} removed) · "
+            + (extra + " · " if extra else "") +
             f"{n_mark} pause markers → {self.marker_len.value():g} s silence · "
             f"session {fmt_mmss(self.edl.output_duration())}")
 

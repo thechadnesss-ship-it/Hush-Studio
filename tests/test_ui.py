@@ -97,6 +97,28 @@ def test_review_dialog_edits_the_list(app):
     d.close()
 
 
+def test_review_flub_proposals_accept_undo_and_render(app):
+    from PyQt6.QtWidgets import QPushButton
+    from ui.review import ReviewDialog
+    clean = np.random.default_rng(1).normal(0, 0.1, SR * 60).astype(np.float32)
+    edl = EditList(duration=60.0, sample_rate=SR, cuts=[
+        Cut(10.0, 15.0, "flub", keep=True, proposed=True), Cut(30.0, 33.0, "flub", keep=True, proposed=True)])
+    full = edl.output_duration()
+    d = ReviewDialog(edl, clean)
+    d.show()
+    pump(app, 0.1)
+    assert "2 waiting" in d.summary.text() and edl.output_duration() == full   # proposals are not applied
+    d.cuts.cellWidget(0, 4).click()                                            # preview must not crash
+    next(b for b in d.cuts.cellWidget(0, 3).findChildren(QPushButton) if b.text() == "Accept cut").click()
+    assert not edl.cuts[0].keep and not edl.cuts[0].proposed
+    assert edl.output_duration() < full - 4
+    next(b for b in d.cuts.cellWidget(1, 3).findChildren(QPushButton) if b.text() == "Undo").click()
+    assert edl.cuts[1].keep and not edl.cuts[1].proposed
+    assert len(edl.render(clean)) / SR == edl.output_duration() or abs(len(edl.render(clean)) / SR - edl.output_duration()) < 0.05
+    assert "waiting" not in d.summary.text()
+    d.close()
+
+
 def test_sky_forecast_dialog(app):
     from datetime import datetime
     from core.quiet_planner.forecast import build
