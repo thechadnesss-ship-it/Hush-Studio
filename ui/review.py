@@ -33,6 +33,8 @@ def play(x: np.ndarray) -> None:
 
 
 class ReviewDialog(QDialog):
+    EDIT = 2                      # exec() result: open the waveform editor
+
     def __init__(self, edl: EditList, clean: np.ndarray, parent=None, capture: dict | None = None):
         super().__init__(parent)
         self.setWindowTitle("Review edits")
@@ -92,6 +94,10 @@ class ReviewDialog(QDialog):
         self.polish = QCheckBox("Studio polish: warmth, softer “s” sounds, gentle evening-out (keeps her style)")
         lay.addWidget(self.polish)
         btns = QHBoxLayout()
+        hand = QPushButton("Edit by hand…")
+        hand.setToolTip("Open the waveform editor: cut, silence, paste, fades, markers, and the automatic tools")
+        hand.clicked.connect(lambda: self.done(self.EDIT))
+        btns.addWidget(hand)
         btns.addStretch(1)
         cancel = QPushButton("Back")
         cancel.clicked.connect(self.reject)
