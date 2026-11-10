@@ -444,7 +444,8 @@ class MainWindow(QMainWindow):
             self.edl, self.clean = edl, clean
             self._show_plan(edl.output_duration())
             self.render()
-        else:                                   # Takes → "Open in editor": the waveform editor
+        else:
+            # Takes → "Open in editor": the waveform editor
             self.edl, self.clean = edl, clean
             self.open_editor()
 
@@ -559,7 +560,7 @@ class MainWindow(QMainWindow):
     def _recorded(self, result):
         w = PrepareWorker(self.session, recording=result, cfg=self._cfg())
         w.stage.connect(self.message.setText)
-        self._run(w, self._prepared)
+        self._run(w, lambda edl, clean, source: self._prepared(edl, clean, source=source))
 
     # ================================================================== import
 
@@ -577,7 +578,7 @@ class MainWindow(QMainWindow):
         self.btn_open.hide()
         w = PrepareWorker(self.session, import_src=path, cfg=self._cfg())
         w.stage.connect(self.message.setText)
-        self._run(w, self._prepared)
+        self._run(w, lambda edl, clean, source: self._prepared(edl, clean, source=source))
 
     # ================================================================== review + render
 
@@ -588,13 +589,16 @@ class MainWindow(QMainWindow):
         except (OSError, ValueError, AttributeError):
             return None
 
-    def _prepared(self, edl, clean):
+    def _prepared(self, edl, clean, quality=None, source=None):
         self.edl, self.clean = edl, clean
         self._show_plan(edl.output_duration())
         self.timer.setText(_hms(edl.output_duration()))
         self._set_mode("review")
         self.companion.say("review")
-        dlg = ReviewDialog(edl, clean, self, capture=self._capture_report())
+        capture = self._capture_report()
+        dlg = ReviewDialog(edl, clean, self, capture=capture, source=source, quality=quality,
+                           imported=capture is None,
+                           quality_unavailable=source is None)
         r = dlg.exec()
         if r == ReviewDialog.EDIT:
             self.open_editor()

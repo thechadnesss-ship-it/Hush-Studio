@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (QCheckBox, QDialog, QDoubleSpinBox, QFrame, QHBoxLa
                              QPushButton, QScrollArea, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
 from core.edl import EditList
+from core.audio_quality import QualityReport
 from core.renderer import fmt_hms, fmt_mmss
 
 from . import theme
@@ -35,11 +36,14 @@ def play(x: np.ndarray) -> None:
 class ReviewDialog(QDialog):
     EDIT = 2                      # exec() result: open the waveform editor
 
-    def __init__(self, edl: EditList, clean: np.ndarray, parent=None, capture: dict | None = None):
+    def __init__(self, edl: EditList, clean: np.ndarray, parent=None, capture: dict | None = None,
+                 source: np.ndarray | None = None, quality: QualityReport | None = None,
+                 imported: bool = False, quality_unavailable: bool = False):
         super().__init__(parent)
         self.setWindowTitle("Review edits")
         self.resize(760, 620)
         self.edl, self.clean = edl, clean
+        self.imported = imported
         self._removed_markers = []
         lay = QVBoxLayout(self)
 
@@ -51,6 +55,34 @@ class ReviewDialog(QDialog):
         self.check.setWordWrap(True)
         self.check.setVisible(capture is not None)          # imported takes: nothing to report
         lay.addWidget(self.check)
+        self.quality_check = QLabel()
+        self.quality_check.setWordWrap(True)
+        self.quality_check.setVisible(source is not None or quality is not None or quality_unavailable)
+        lay.addWidget(self.quality_check)
+        self._quality_worker = None
+        if quality_unavailable and source is None and quality is None:
+            self._show_quality(None)
+        self.dropout_row = QHBoxLayout()
+        self.dropout_row.setContentsMargins(0, 0, 0, 0)
+        self.dropout_strip = QScrollArea()
+        self.dropout_strip.setWidgetResizable(True)
+        self.dropout_strip.setFrameShape(QFrame.Shape.NoFrame)
+        self.dropout_strip.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.dropout_strip.setFixedHeight(52)
+        dropout_inner = QWidget()
+        dropout_inner.setLayout(self.dropout_row)
+        self.dropout_strip.setWidget(dropout_inner)
+        self.dropout_strip.setVisible(False)
+        lay.addWidget(self.dropout_strip)
+        if quality is None and source is not None:
+            from .workers import AudioQualityWorker
+            self.quality_check.setText("Audio quality: checking...")
+            self._quality_worker = AudioQualityWorker(source, clean, self)
+            self._quality_worker.done.connect(self._show_quality)
+        if quality is not None:
+            self._show_quality(quality)
+        if self._quality_worker is not None:
+            self._quality_worker.start()
         # every recorded loss spot gets its own ▶; a scrolling strip holds up to MAX_LOST_SPOTS of them
         self.lost_row = QHBoxLayout()
         self.lost_row.setContentsMargins(0, 0, 0, 0)
@@ -111,6 +143,29 @@ class ReviewDialog(QDialog):
 
     # ------------------------------------------------------------------ recording check
 
+    def _show_quality(self, report: QualityReport) -> None:
+        if report is None:
+            self.quality_check.setText("Audio quality check unavailable; inspect the take before rendering.")
+            self.quality_check.setStyleSheet(f"color:{theme.AMBER};")
+            return
+        if report.passed:
+            self.quality_check.setText(
+                f"Audio quality: OK · peak {report.peak_dbfs:.1f} dBFS · "
+                f"true peak {report.true_peak_dbfs:.1f} dBFS · distortion {report.distortion_db:.1f} dB.")
+            self.quality_check.setStyleSheet(f"color:{theme.GREEN};")
+        else:
+            advice = ("Import a cleaner file before finishing."
+                      if self.imported else "Record this take again before finishing.")
+            self.quality_check.setText("Audio quality warning: " + "; ".join(report.warnings) + ". " + advice)
+            self.quality_check.setStyleSheet(f"color:{theme.RED}; font-weight:600;")
+        if report.dropouts:
+            for t in report.dropouts:
+                btn = self._play_btn(t, t + 0.06, context_s=0.5)
+                btn.setText(f"▶  {fmt_mmss(t)}")
+                self.dropout_row.addWidget(btn)
+            self.dropout_row.addStretch(1)
+            self.dropout_strip.setVisible(True)
+
     def _show_capture(self, cap: dict) -> None:
         spots = list(cap.get("lost_at_s", []))
         # total lost buffers (every one counts) is separate from the capped, 0.5 s-merged spots
@@ -141,6 +196,26 @@ class ReviewDialog(QDialog):
             self.lost_row.addWidget(btn)
         self.lost_row.addStretch(1)
         self.lost_strip.setVisible(bool(spots))
+
+    def _detach_quality_worker(self):
+        """Let a long advisory check finish without ever blocking the GUI thread."""
+        worker = self._quality_worker
+        if worker is not None and worker.isRunning():
+            try:
+                worker.done.disconnect(self._show_quality)
+            except (TypeError, RuntimeError):
+                pass
+            worker.setParent(None)
+            worker.finished.connect(worker.deleteLater)
+        self._quality_worker = None
+
+    def done(self, result: int) -> None:
+        self._detach_quality_worker()
+        super().done(result)
+
+    def closeEvent(self, event):
+        self._detach_quality_worker()
+        super().closeEvent(event)
 
     # ------------------------------------------------------------------ tables
 
@@ -187,10 +262,10 @@ class ReviewDialog(QDialog):
         c.accept() if accept else c.undo()
         self._fill()
 
-    def _play_btn(self, a: float, b: float) -> QPushButton:
+    def _play_btn(self, a: float, b: float, *, context_s: float = 2.0) -> QPushButton:
         btn = QPushButton("▶  Listen")
         btn.setObjectName("link")
-        lo, hi = max(0, int((a - 2) * SR)), min(len(self.clean), int((b + 2) * SR))
+        lo, hi = max(0, int((a - context_s) * SR)), min(len(self.clean), int((b + context_s) * SR))
         btn.clicked.connect(lambda: play(self.clean[lo:hi]))
         return btn
 

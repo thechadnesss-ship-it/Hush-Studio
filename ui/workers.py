@@ -7,9 +7,11 @@ import traceback
 from pathlib import Path
 
 import numpy as np
+import soundfile as sf
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from core.asset_cache import AssetCache
+from core.audio_quality import analyze
 from core.config import RenderConfig
 from core.edl import EditList
 from core.session import Session, denoise, finish, import_take, prepare
@@ -19,7 +21,7 @@ class PrepareWorker(QThread):
     """Imported file: import → noise removal → edits. Recorded take: edits only (the live ear
     already heard the planes and noise removal ran during the take)."""
     stage = pyqtSignal(str)
-    done = pyqtSignal(object, object)     # EditList, clean ndarray
+    done = pyqtSignal(object, object, object)     # EditList, clean ndarray, raw source (or None)
     failed = pyqtSignal(str)
 
     def __init__(self, session: Session, import_src: Path | None = None, recording=None,
@@ -40,14 +42,43 @@ class PrepareWorker(QThread):
                 edl = prepare(self.session, raw, clean, render_cfg=self.cfg)
             else:
                 rec = self.recording
+                raw = None
                 clean = rec.clean
                 self.stage.emit("Finding pauses…")
                 edl = prepare(self.session, None, clean, ear_events=rec.ear_events,
                               render_cfg=self.cfg)
             self.stage.emit(f"Ready to review ({time.perf_counter() - t0:.0f}s)")
-            self.done.emit(edl, clean)
+            # The potentially long source-vs-clean check belongs to the review worker,
+            # not on the speed-critical prepare path.  Keep the source as an ndarray for
+            # imports and a path for recordings so ReviewDialog can load it off-thread.
+            # Audacity round-trips are a new source timeline; comparing raw.flac
+            # against them would manufacture gaps and distortion warnings.
+            source = (raw if raw is not None else self.session.raw) if edl.source == "clean.wav" else None
+            self.done.emit(edl, clean, source)
         except Exception:
             self.failed.emit(traceback.format_exc())
+
+
+class AudioQualityWorker(QThread):
+    """Run the optional source-vs-clean check away from the Qt GUI thread."""
+    done = pyqtSignal(object)
+
+    def __init__(self, source: np.ndarray | Path, processed: np.ndarray, parent=None):
+        super().__init__(parent)
+        self.source, self.processed = source, processed
+
+    def run(self):
+        try:
+            source = self.source
+            if isinstance(source, Path):
+                source, _ = sf.read(source, dtype="float32", always_2d=False)
+                if source.ndim > 1:
+                    source = source.mean(axis=1)
+            # Mastering re-gains and limits later, so pre-mastering true-peak
+            # headroom is informational here, not a reason to reject a take.
+            self.done.emit(analyze(source, self.processed, warn_true_peak=False))
+        except Exception:
+            self.done.emit(None)
 
 
 class RenderWorker(QThread):
