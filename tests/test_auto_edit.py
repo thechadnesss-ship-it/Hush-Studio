@@ -74,7 +74,9 @@ def test_shaped_output_matches_sams_style():
     assert kinds.count("marker") == len(truth) and kinds[0] == "lead" and kinds[-1] == "tail"
     out = EditList(duration=len(x) / SR, sample_rate=SR, pauses=pauses).render(x)
     gaps = [e - s for s, e in detect_pauses(out, SR)]
-    assert sum(1 for g in gaps if 9.5 < g < 10.5) == len(truth)   # each marker → ~10 s of silence
+    # Markers that happen to fall in the induction window use the measured 5 s pause.
+    assert sum(1 for g in gaps if 9.5 < g < 10.5) == 10
+    assert sum(1 for g in gaps if 4.5 < g < 5.5) == 2
     assert detect_speech(out, SR)[0][0] < 0.2                         # lead trimmed
     assert gaps[-1] == pytest.approx(13.0, abs=0.2)                   # tail kept at 13 s
     # the marker utterance itself is gone: fewer phrases out than in
@@ -135,7 +137,18 @@ def test_induction_boundaries_include_180_but_exclude_720_and_need_full_take():
 
     short_take = shape_pauses([(170.0, 171.0), (180.0, 181.0), (190.0, 191.0)],
                               719.0, AutoEditConfig(), markers=[1])
-    assert [p.new_length for p in short_take if p.kind == "marker"] == [10.0]
+    assert [p.new_length for p in short_take if p.kind == "marker"] == [5.0]
+
+
+def test_render_config_zero_disables_induction_pause_and_validates_bounds():
+    from core.config import RenderConfig
+    assert RenderConfig(induction_marker_pause_s=0).induction_marker_pause_s is None
+    with pytest.raises(ValueError):
+        RenderConfig(marker_pause_s=0)
+    with pytest.raises(ValueError):
+        RenderConfig(induction_marker_pause_s=-1)
+    with pytest.raises(ValueError):
+        RenderConfig(induction_min_start_s=721, induction_end_s=720)
 
 
 def test_render_config_exposes_induction_marker_settings():
@@ -147,6 +160,24 @@ def test_render_config_exposes_induction_marker_settings():
     assert auto.induction_min_start_s == cfg.induction_min_start_s
 
 
+def test_prepare_uses_caller_render_config(tmp_path, monkeypatch):
+    from core.config import RenderConfig
+    from core.session import Session, prepare
+    speech = [(200.0, 201.0), (204.0, 205.0), (210.0, 211.0)]
+    clean = np.zeros(220 * SR, dtype=np.float32)
+    monkeypatch.setattr("core.session.detect_speech", lambda audio, sr: speech)
+    seen = {}
+    def fake_auto_edit(*args, **kwargs):
+        seen["cfg"] = args[4]
+        return [], None
+    monkeypatch.setattr("core.session.auto_edit", fake_auto_edit)
+    cfg = RenderConfig(induction_marker_pause_s=0)
+    (tmp_path / "s").mkdir()
+    edl = prepare(Session(tmp_path / "s"), clean, clean, ear_events=[], render_cfg=cfg)
+    assert seen["cfg"].induction_marker_pause_s is None
+    assert edl.duration == pytest.approx(220.0)
+
+
 @pytest.mark.skipif(not RAW.exists(), reason="Sam's raw reference take not present")
 def test_real_take_reproduces_her_edit():
     from core.session import load_mono_48k
@@ -155,6 +186,8 @@ def test_real_take_reproduces_her_edit():
     pauses, tmpl = auto_edit(x, SR, speech, len(x) / SR)
     markers = [p for p in pauses if p.kind == "marker"]
     assert 80 <= len(markers) <= 100, len(markers)                    # ≈ 90 markers in her edit
+    induction = [p for p in markers if p.new_length == pytest.approx(5.0)]
+    assert len(induction) == 11
     # spot checks: positions where her edit replaced the word with ~10 s of silence (raw time, s)
     for t in (817.4, 994.8, 1026.3, 1484.3, 1924.8):
         assert any(p.start <= t <= p.end for p in markers), t

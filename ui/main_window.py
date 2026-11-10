@@ -492,7 +492,7 @@ class MainWindow(QMainWindow):
         self._run(FuncWorker(rec.stop), self._recorded)
 
     def _recorded(self, result):
-        w = PrepareWorker(self.session, recording=result)
+        w = PrepareWorker(self.session, recording=result, cfg=self._cfg())
         w.stage.connect(self.message.setText)
         self._run(w, self._prepared)
 
@@ -510,7 +510,7 @@ class MainWindow(QMainWindow):
         self._set_mode("busy")
         self.companion.say("preparing")
         self.btn_open.hide()
-        w = PrepareWorker(self.session, import_src=path)
+        w = PrepareWorker(self.session, import_src=path, cfg=self._cfg())
         w.stage.connect(self.message.setText)
         self._run(w, self._prepared)
 

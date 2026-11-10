@@ -42,6 +42,15 @@ class RenderConfig:
             raise ValueError(f"fit_policy must be one of {FIT_POLICIES}, got {self.fit_policy!r}")
         if self.target_hours <= 0:
             raise ValueError("target_hours must be > 0")
+        if self.marker_pause_s <= 0:
+            raise ValueError("marker_pause_s must be > 0")
+        if self.induction_marker_pause_s is not None:
+            if self.induction_marker_pause_s < 0:
+                raise ValueError("induction_marker_pause_s must be >= 0")
+            if self.induction_marker_pause_s == 0:
+                object.__setattr__(self, "induction_marker_pause_s", None)
+        if self.induction_min_start_s > self.induction_end_s:
+            raise ValueError("induction_min_start_s must be <= induction_end_s")
         w, _, h = self.resolution.partition("x")
         if not (w.isdigit() and h.isdigit()):
             raise ValueError(f"resolution must look like 1920x1080, got {self.resolution!r}")

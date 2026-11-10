@@ -29,7 +29,7 @@ class AutoEditConfig:
     silence_pauses: bool = True
     marker_detect: bool = True
     marker_pause_s: float = 10.0       # her edit: 9–13 s, median ≈ 10
-    induction_marker_pause_s: float | None = 5.0  # shorter pauses in the induction
+    induction_marker_pause_s: float | None = 5.0  # shorter pauses in the induction; None = off
     induction_end_s: float = 720.0                # early marker phase ends ~12 min in
     induction_min_start_s: float = 180.0          # avoid changing short takes/tests
     marker_len_s: tuple[float, float] = (0.6, 1.8)
@@ -106,8 +106,6 @@ def shape_pauses(speech: list[tuple[float, float]], duration: float, cfg: AutoEd
     kept = [(i, p) for i, p in enumerate(speech) if i not in mset]
     marker_spans = sorted(speech[i] for i in mset if 0 <= i < len(speech))
     marker_starts = [s for s, _ in marker_spans]
-    induction_enabled = duration >= cfg.induction_end_s
-
     def overlaps_cut(a: float, b: float) -> bool:
         return any(a < ce and cs < b for cs, ce in cuts)
 
@@ -116,27 +114,19 @@ def shape_pauses(speech: list[tuple[float, float]], duration: float, cfg: AutoEd
         return out
     if kept[0][1][0] > cfg.lead_s:
         out.append(Pause(0.0, kept[0][1][0], cfg.lead_s, kind="lead"))
-    marker_cursor = 0
     for (_, (_, a_end)), (_, (b_start, _)) in zip(kept, kept[1:]):
         if b_start - a_end <= 0 or overlaps_cut(a_end, b_start):
             continue
-        marker_cursor = max(marker_cursor, bisect_left(marker_starts, a_end))
-        gap_marker = None
-        while marker_cursor < len(marker_spans):
-            ms, me = marker_spans[marker_cursor]
-            if ms > b_start:
-                break
-            if me <= b_start:
-                if gap_marker is None:
-                    gap_marker = (ms, me)
-                marker_cursor += 1
-                continue
-            marker_cursor += 1
+        marker_idx = bisect_left(marker_starts, a_end)
+        gap_marker = next(
+            (span for span in marker_spans[marker_idx:] if span[0] <= b_start and span[1] <= b_start),
+            None,
+        )
         length = b_start - a_end
         if gap_marker is not None:
             marker_start = gap_marker[0]
             marker_pause_s = cfg.marker_pause_s
-            if (induction_enabled and cfg.induction_marker_pause_s is not None
+            if (cfg.induction_marker_pause_s is not None
                     and cfg.induction_min_start_s <= marker_start < cfg.induction_end_s):
                 marker_pause_s = cfg.induction_marker_pause_s
             out.append(Pause(a_end, b_start, marker_pause_s, kind="marker"))
