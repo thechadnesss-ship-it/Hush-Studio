@@ -1,5 +1,7 @@
 {
   "meta": {
+    "project": "Hush Studio",
+    "worktree_prefix": "hush-studio",
     "title": "Hush Studio Build Plan",
     "subtitle": "Hush Studio: the recording and render app for the Sam Katz Hypnosis channel. Migrated 2026-11-10 from ops/state.json.",
     "owners": {
