@@ -64,7 +64,9 @@ def _active(x: np.ndarray, frame: int = 960) -> np.ndarray:
     if n == 0:
         return np.ones(len(x), dtype=bool)
     rms = np.sqrt(np.mean(x[:n * frame].reshape(n, frame).astype(np.float64) ** 2, axis=1))
-    floor = max(10 ** (-70 / 20), float(np.percentile(rms, 20)) * 3.0)
+    # Do not classify very quiet room tone as speech merely because the take is
+    # mostly silent.  The old -70 dBFS floor made low-level noise look active.
+    floor = max(10 ** (-60 / 20), float(np.percentile(rms, 20)) * 3.0)
     active = np.repeat(rms > floor, frame)
     return np.pad(active, (0, len(x) - len(active)), constant_values=False)
 
@@ -103,16 +105,21 @@ def analyze(source: np.ndarray, processed: np.ndarray, sr: int = SR,
     # flat runs are the reliable evidence of audible clipping.
     clipped = int(flat_top_runs(source, min_len=8))
     peak = _db(np.max(np.abs(processed), initial=0.0))
-    tp = true_peak(processed, sr)
+    # True-peak reconstruction is relatively expensive on a long take.  It is
+    # advisory for source-vs-clean checks, so avoid the 4x pass when disabled.
+    tp = true_peak(processed, sr) if warn_true_peak else peak
     n = min(len(source), len(processed))
     ref, out = source[:n], processed[:n]
     active = _active(ref)
     if active.any() and np.any(ref[active]):
-        # Remove gain difference before measuring residual distortion.
+        # Remove gain difference before measuring added distortion.  A denoiser
+        # is expected to remove source-only noise; count only energy added by
+        # processing above the gain-adjusted source envelope.
         gain = float(np.dot(ref[active], out[active]) / (np.dot(ref[active], ref[active]) + 1e-12))
-        residual = out[active] - gain * ref[active]
-        distortion = _db(np.sqrt(np.mean(residual.astype(np.float64) ** 2)) /
-                          (np.sqrt(np.mean(ref[active].astype(np.float64) ** 2)) + 1e-12))
+        expected = np.abs(gain * ref[active])
+        added = np.maximum(np.abs(out[active]) - expected, 0.0)
+        distortion = _db(np.sqrt(np.mean(added.astype(np.float64) ** 2)) /
+                          (np.sqrt(np.mean(out[active].astype(np.float64) ** 2)) + 1e-12))
     else:
         distortion = -120.0
     dropouts = dropout_times(ref, out, sr)

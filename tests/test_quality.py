@@ -53,6 +53,13 @@ def test_realistic_denoise_noise_removal_does_not_fail():
     assert report.passed
 
 
+def test_true_peak_is_not_reconstructed_for_advisory_check(monkeypatch):
+    x, _ = speech_take(2.0, -24, seed=407)
+    monkeypatch.setattr("core.audio_quality.true_peak", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError()))
+    report = analyze(x, x, warn_true_peak=False)
+    assert report.passed
+
+
 def test_dropout_spots_are_merged_and_capped():
     x, regions = speech_take(8.0, -18, seed=406)
     y = x.copy()

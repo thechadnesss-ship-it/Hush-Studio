@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (QCheckBox, QDialog, QDoubleSpinBox, QFrame, QHBoxLa
                              QPushButton, QScrollArea, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
 from core.edl import EditList
-from core.audio_quality import QualityReport, analyze
+from core.audio_quality import QualityReport
 from core.renderer import fmt_hms, fmt_mmss
 
 from . import theme
@@ -58,13 +58,6 @@ class ReviewDialog(QDialog):
         self.quality_check.setVisible(source is not None or quality is not None)
         lay.addWidget(self.quality_check)
         self._quality_worker = None
-        if quality is None and source is not None:
-            from .workers import AudioQualityWorker
-            self.quality_check.setText("Audio quality: checking...")
-            self._quality_worker = AudioQualityWorker(source, clean, self)
-            self._quality_worker.done.connect(self._show_quality)
-        if quality is not None:
-            self._show_quality(quality)
         self.dropout_row = QHBoxLayout()
         self.dropout_row.setContentsMargins(0, 0, 0, 0)
         self.dropout_strip = QScrollArea()
@@ -77,6 +70,13 @@ class ReviewDialog(QDialog):
         self.dropout_strip.setWidget(dropout_inner)
         self.dropout_strip.setVisible(False)
         lay.addWidget(self.dropout_strip)
+        if quality is None and source is not None:
+            from .workers import AudioQualityWorker
+            self.quality_check.setText("Audio quality: checking...")
+            self._quality_worker = AudioQualityWorker(source, clean, self)
+            self._quality_worker.done.connect(self._show_quality)
+        if quality is not None:
+            self._show_quality(quality)
         if self._quality_worker is not None:
             self._quality_worker.start()
         # every recorded loss spot gets its own ▶; a scrolling strip holds up to MAX_LOST_SPOTS of them
@@ -188,6 +188,19 @@ class ReviewDialog(QDialog):
             self.lost_row.addWidget(btn)
         self.lost_row.addStretch(1)
         self.lost_strip.setVisible(bool(spots))
+
+    def _wait_quality_worker(self):
+        worker = self._quality_worker
+        if worker is not None and worker.isRunning():
+            worker.wait()
+
+    def done(self, result: int) -> None:
+        self._wait_quality_worker()
+        super().done(result)
+
+    def closeEvent(self, event):
+        self._wait_quality_worker()
+        super().closeEvent(event)
 
     # ------------------------------------------------------------------ tables
 

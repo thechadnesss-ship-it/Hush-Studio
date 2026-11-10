@@ -42,15 +42,17 @@ class PrepareWorker(QThread):
                 edl = prepare(self.session, raw, clean, render_cfg=self.cfg)
             else:
                 rec = self.recording
-                raw, _ = sf.read(self.session.raw, dtype="float32", always_2d=False)
-                if raw.ndim > 1:
-                    raw = raw.mean(axis=1)
+                raw = None
                 clean = rec.clean
                 self.stage.emit("Finding pauses…")
                 edl = prepare(self.session, None, clean, ear_events=rec.ear_events,
                               render_cfg=self.cfg)
             # Quality is advisory: a missing/corrupt source must not prevent review.
             try:
+                if raw is None:
+                    raw, _ = sf.read(self.session.raw, dtype="float32", always_2d=False)
+                    if raw.ndim > 1:
+                        raw = raw.mean(axis=1)
                 quality = analyze(raw, clean, warn_true_peak=False)
             except Exception:
                 quality = None
@@ -64,13 +66,18 @@ class AudioQualityWorker(QThread):
     """Run the optional source-vs-clean check away from the Qt GUI thread."""
     done = pyqtSignal(object)
 
-    def __init__(self, source: np.ndarray, processed: np.ndarray, parent=None):
+    def __init__(self, source: np.ndarray | Path, processed: np.ndarray, parent=None):
         super().__init__(parent)
         self.source, self.processed = source, processed
 
     def run(self):
         try:
-            self.done.emit(analyze(self.source, self.processed, warn_true_peak=False))
+            source = self.source
+            if isinstance(source, Path):
+                source, _ = sf.read(source, dtype="float32", always_2d=False)
+                if source.ndim > 1:
+                    source = source.mean(axis=1)
+            self.done.emit(analyze(source, self.processed, warn_true_peak=False))
         except Exception:
             self.done.emit(None)
 

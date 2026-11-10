@@ -424,9 +424,6 @@ class MainWindow(QMainWindow):
         s = Session(folder)
         try:
             clean, _ = sf.read(s.clean, dtype="float32")
-            source, _ = sf.read(s.raw, dtype="float32", always_2d=False)
-            if source.ndim > 1:
-                source = source.mean(axis=1)
             edl = EditList.load(s.edits)
         except Exception as e:
             self._error(f"Couldn't open that take: {e}")
@@ -441,7 +438,9 @@ class MainWindow(QMainWindow):
             self._show_plan(edl.output_duration())
             self.render()
         else:
-            self._prepared(edl, clean, source=source)
+            # The optional raw-vs-clean check runs in AudioQualityWorker.  A
+            # missing raw backup must not prevent opening the saved take.
+            self._prepared(edl, clean, source=s.raw)
 
     def start_recording(self):
         from core.capture import MicSource, Recorder
