@@ -82,14 +82,19 @@ def denoise(session: Session, x: np.ndarray, denoiser: Denoiser | None = None,
     Writes clean.wav. Pass `denoiser` to force a specific streaming backend."""
     if attenuation_limit_db is None:
         attenuation_limit_db = 100.0 if denoiser is None and deepfilter_exe() is not None else 18.0
+    from .log_setup import get_logger
+    log = get_logger("denoise")
+    log.info("denoise start: %.1fs audio, attenuation limit %s dB", len(x) / SR, attenuation_limit_db)
     if denoiser is None and deepfilter_exe() is not None:
         y = deepfilter_array(x, SR, attenuation_limit_db, work_dir=session.dir)
         sf.write(session.clean, y, SR, subtype="FLOAT")
+        log.info("denoise done: deepfilternet")
         return y, "deepfilternet"
     from .denoise import SpectralGateConfig
     d = denoiser or SpectralGate(SpectralGateConfig(attenuation_limit_db=attenuation_limit_db))
     y = denoise_array(x, d, chunk=SR * 60)       # whole files: big batches (live REC uses 100 ms)
     sf.write(session.clean, y, SR, subtype="FLOAT")
+    log.info("denoise done: %s", type(d).__name__)
     return y, type(d).__name__
 
 

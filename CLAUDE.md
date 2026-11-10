@@ -118,6 +118,10 @@ makes speaking hard → "Listen back (last 15 s)" while paused instead.
   red line under it says to turn the mic level down; lost input buffers get their own warning there.
   Review (T8): live takes show a "Recording check" line from capture.json: lost-sound count with a ▶
   per spot (`lost_at_s`, take time, merged within 0.5 s, max 200) and clipping, or a green all-clear.
+- **Logging (T19, `core/log_setup.py`):** `main.py` calls `setup_logging()` first: rotating `hush-studio.log` (2 MB × 5) in
+  `%LOCALAPPDATA%\HushStudio\logs`, loggers `hush.{app,capture,denoise,render,upload}`, a redacting filter (tokens, secrets,
+  upload ids, tracebacks included), startup report (app/Windows/Python/Qt/FFmpeg versions, input devices + host API), and a
+  global `sys`/`threading` excepthook that logs the traceback and shows a friendly box. Per-take `capture.json` is unchanged.
 - **Live capture (`core/capture.py`):** callback only enqueues; full queue drops + counts (a
   simulated faster-than-real-time source uses backpressure instead). USB mic verified at 48 kHz.
 
