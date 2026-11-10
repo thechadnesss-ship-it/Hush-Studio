@@ -143,3 +143,48 @@ def test_publish_dialog(app, tmp_path, monkeypatch):
     d._accept()
     assert d.meta is not None and d.meta.publish_at is not None
     d.close()
+
+
+def _record_into_window(app, w, tmp_path, x):
+    src = ArraySource(np.asarray(x, np.float32), realtime=True)
+    w.session = Session(tmp_path / "s")
+    w.recorder = Recorder(w.session, source=src, use_radar=False)
+    w._reset_mic_warning()
+    w._set_mode("recording")
+    w.poll.start()
+    w.recorder.start()
+    seen = False
+    while not src.done.is_set():
+        pump(app, 0.05)
+        seen = seen or (w.mic_warning.isVisible() and w.vu.clipping)
+    pump(app, 0.3)
+    return seen
+
+
+def test_mic_clipping_warning(app, tmp_path):
+    """T7: a too-loud mic turns the meter red and says what to do."""
+    from ui.main_window import MIC_CLIP_WARNING, MainWindow
+    w = MainWindow()
+    w.resize(900, 640)
+    w.show()
+    x, _ = speech_take(4.0, -24, seed=95)
+    hot = np.clip(x / np.abs(x).max() * 3.0, -1.0, 1.0)            # an overdriven mic
+    assert _record_into_window(app, w, tmp_path, hot)
+    assert w.mic_warning.text() == MIC_CLIP_WARNING
+    SHOTS.mkdir(exist_ok=True)
+    w.grab().save(str(SHOTS / "ui_clipping.png"))
+    w.poll.stop()
+    w.recorder.stop()
+    w.recorder = None
+
+
+def test_clean_take_shows_no_mic_warning(app, tmp_path):
+    from ui.main_window import MainWindow
+    w = MainWindow()
+    w.show()
+    x, _ = speech_take(3.0, -24, seed=96)
+    assert not _record_into_window(app, w, tmp_path, x)
+    assert not w.mic_warning.isVisible() and not w.vu.clipping
+    w.poll.stop()
+    w.recorder.stop()
+    w.recorder = None

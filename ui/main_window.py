@@ -13,6 +13,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -34,6 +35,11 @@ from .widgets import Companion, RecordButton, TrafficLight, VUMeter
 from .workers import PrepareWorker, RenderWorker
 
 SR = 48000
+CLIP_DB = -0.01                    # peak at full scale (16-bit max is −0.0003 dBFS)
+MIC_WARN_HOLD_S = 6.0
+MIC_CLIP_WARNING = ("Mic too loud: it's clipping, which sounds harsh. Turn the mic level down "
+                    "(Windows Sound settings → Recording → your mic → Properties → Levels).")
+MIC_DROP_WARNING = "Some sound was lost: the computer was too busy. Close other apps if it keeps happening."
 SESSIONS_DIR = DATA_ROOT / "sessions"
 ASSETS_DIR = PROJECT_ROOT / "assets"
 
@@ -163,6 +169,15 @@ class MainWindow(QMainWindow):
         vu_row.addWidget(self.vu)
         vu_row.addStretch(1)
         lay.addLayout(vu_row)
+        # mic problems (clipping, lost buffers): its own line, the status line below is the guard's
+        self.mic_warning = QLabel("")
+        self.mic_warning.setObjectName("micwarn")
+        self.mic_warning.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self.mic_warning.setWordWrap(True)
+        self.mic_warning.hide()
+        self._mic_seen = (0, 0)                 # clipped samples, lost blocks already warned about
+        self._mic_warn_until = 0.0
+        lay.addWidget(self.mic_warning)
         lay.addSpacing(12)
         self.message = QLabel("")
         self.message.setObjectName("message")
@@ -385,6 +400,7 @@ class MainWindow(QMainWindow):
                                      guard_enabled=self.guard_on.isChecked(),
                                      use_radar=self.guard_on.isChecked(),
                                      on_radar=self.planner.on_recorder_snapshot if self.planner else None)
+            self._reset_mic_warning()
             self.recorder.start()
         except Exception as e:
             self._error(f"Couldn't open the microphone: {e}")
@@ -425,7 +441,7 @@ class MainWindow(QMainWindow):
             return
         s = r.status
         self.timer.setText(_hms(s.take_s))
-        self.vu.set_levels(s.level_db, s.peak_db)
+        self.vu.set_levels(s.level_db, s.peak_db, clipped=self._check_mic(s))
         self._show_plan(max(s.take_s, 1.0))
         if self.mode == "paused":
             return
@@ -440,6 +456,28 @@ class MainWindow(QMainWindow):
         if s.chime:
             s.chime = False
             chime((660.0, 880.0) if s.light == "clear" else (520.0,))
+
+    def _check_mic(self, s) -> bool:
+        """Clipping or lost input buffers since the last poll → warning under the meter.
+        Returns whether the input clipped (the peak counts too, so it shows while paused)."""
+        now = time.monotonic()
+        clipped = s.clipped_samples > self._mic_seen[0] or s.peak_db >= CLIP_DB
+        dropped = s.overflows + s.dropped_blocks > self._mic_seen[1]
+        self._mic_seen = (s.clipped_samples, s.overflows + s.dropped_blocks)
+        if clipped:
+            self.mic_warning.setText(MIC_CLIP_WARNING)
+            self._mic_warn_until = now + MIC_WARN_HOLD_S
+        elif dropped:
+            self.mic_warning.setText(MIC_DROP_WARNING)
+            self._mic_warn_until = now + MIC_WARN_HOLD_S
+        self.mic_warning.setVisible(now < self._mic_warn_until)
+        return clipped
+
+    def _reset_mic_warning(self):
+        self._mic_seen = (0, 0)
+        self._mic_warn_until = 0.0
+        self.mic_warning.hide()
+        self.vu.reset()
 
     def finish_recording(self):
         if self.recorder is None:

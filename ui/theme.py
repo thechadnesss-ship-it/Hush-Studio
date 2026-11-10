@@ -54,6 +54,7 @@ QLabel#brand {{ color: {ACCENT}; font-size: 18px; font-weight: 600; letter-spaci
 QLabel#timer {{ font-size: 76px; font-weight: 200; letter-spacing: 3px; }}
 QLabel#plan {{ color: {MUTED}; font-size: 14px; }}
 QLabel#message, QLabel#muted {{ color: {MUTED}; }}
+QLabel#micwarn {{ color: {RED}; font-weight: 600; }}
 QLabel#bubble {{ color: {MUTED}; font-size: 14px; }}
 QPushButton {{ background: {BG}; color: {TEXT}; border: 1px solid {BORDER}; border-radius: 19px;
     min-height: 38px; max-height: 38px; padding: 0px 22px; font-weight: 500; }}

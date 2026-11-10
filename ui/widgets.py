@@ -5,6 +5,8 @@ present (personal use), else a small drawn sleepy moon.
 """
 from __future__ import annotations
 
+import time
+
 from pathlib import Path
 
 from PyQt6.QtCore import QRectF, QSize, Qt, QTimer, pyqtSignal
@@ -118,18 +120,36 @@ class RecordButton(QAbstractButton):
 
 
 class VUMeter(QWidget):
-    """Slim level meter, −60…0 dBFS, purple fill on a lilac track, peak tick."""
+    """Slim level meter, −60…0 dBFS, purple fill on a lilac track, peak tick.
+
+    Clipping (T7): the whole meter turns red and stays red for `CLIP_HOLD_S` after the last
+    clipped block, so a single clip is visible; the peak tick turns amber within 6 dB of it."""
+
+    CLIP_HOLD_S = 2.0
+    HOT_DB = -6.0
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.level = -120.0
         self.peak = -120.0
+        self._clip_until = 0.0
         self.setFixedHeight(6)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-    def set_levels(self, rms_db: float, peak_db: float) -> None:
+    @property
+    def clipping(self) -> bool:
+        return time.monotonic() < self._clip_until
+
+    def set_levels(self, rms_db: float, peak_db: float, clipped: bool = False) -> None:
         self.level = rms_db
         self.peak = max(peak_db, self.peak - 1.5)
+        if clipped:
+            self._clip_until = time.monotonic() + self.CLIP_HOLD_S
+        self.update()
+
+    def reset(self) -> None:
+        self.level = self.peak = -120.0
+        self._clip_until = 0.0
         self.update()
 
     def paintEvent(self, _):
@@ -139,13 +159,18 @@ class VUMeter(QWidget):
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(QColor(theme.LILAC_SOFT))
         p.drawRoundedRect(QRectF(0, 0, w, h), h / 2, h / 2)
+        clip = self.clipping
         frac = lambda db: min(1.0, max(0.0, (db + 60) / 60))
-        if frac(self.level) > 0:
+        if clip:                                   # the whole track: impossible to miss
+            p.setBrush(QColor(theme.REC_RED))
+            p.drawRoundedRect(QRectF(0, 0, w, h), h / 2, h / 2)
+        elif frac(self.level) > 0:
             col = theme.ACCENT if self.level < -3 else theme.REC_RED
             p.setBrush(QColor(col))
             p.drawRoundedRect(QRectF(0, 0, max(h, w * frac(self.level)), h), h / 2, h / 2)
         if self.peak > -60:
-            p.setBrush(QColor(theme.TEXT))
+            col = theme.TEXT if clip else (theme.AMBER if self.peak >= self.HOT_DB else theme.TEXT)
+            p.setBrush(QColor(col))
             x = w * frac(self.peak)
             p.drawRect(QRectF(x - 1, 0, 2, h))
 
