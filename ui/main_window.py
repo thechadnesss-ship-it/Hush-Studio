@@ -223,8 +223,12 @@ class MainWindow(QMainWindow):
         self.btn_finish = QPushButton("Finish && render")
         self.btn_finish.setObjectName("primary")
         self.btn_finish.setFixedWidth(170)
+        self.btn_edit = QPushButton("Edit")
+        self.btn_edit.setFixedWidth(100)
+        self.btn_edit.setToolTip("Open this take in the editor")
         ctl.addWidget(self.btn_pause, 0, Qt.AlignmentFlag.AlignVCenter)
         ctl.addWidget(self.btn_rec, 0, Qt.AlignmentFlag.AlignVCenter)
+        ctl.addWidget(self.btn_edit, 0, Qt.AlignmentFlag.AlignVCenter)
         ctl.addWidget(self.btn_finish, 0, Qt.AlignmentFlag.AlignVCenter)
         ctl.addStretch(1)
         lay.addLayout(ctl)
@@ -238,7 +242,8 @@ class MainWindow(QMainWindow):
         lay.addWidget(self.btn_listen, 0, Qt.AlignmentFlag.AlignHCenter)
         self.btn_rec.clicked.connect(lambda: self.finish_recording() if self.mode in ("recording", "paused") else self.start_recording())
         self.btn_pause.clicked.connect(self.toggle_pause)
-        self.btn_finish.clicked.connect(self.finish_recording)
+        self.btn_finish.clicked.connect(self._finish_clicked)
+        self.btn_edit.clicked.connect(self.open_editor)
         self.btn_import.clicked.connect(self.import_take)
 
         lay.addSpacing(16)
@@ -291,7 +296,9 @@ class MainWindow(QMainWindow):
         self.btn_rec.set_recording(rec)
         self.btn_pause.setEnabled(rec)
         self.btn_pause.setText("Resume" if mode == "paused" else "Pause")
-        self.btn_finish.setEnabled(rec)
+        have_take = mode == "done" and getattr(self, "edl", None) is not None and getattr(self, "clean", None) is not None
+        self.btn_finish.setEnabled(rec or have_take)      # after a take: render it (with any edits)
+        self.btn_edit.setVisible(have_take)
         self.btn_import.setVisible(mode in ("idle", "done"))
         self.btn_listen.setVisible(mode == "paused")
         for w in (self.sky, self.btn_sky):
@@ -530,6 +537,13 @@ class MainWindow(QMainWindow):
         self._mic_warn_until = 0.0
         self.mic_warning.hide()
         self.vu.reset()
+
+    def _finish_clicked(self):
+        if self.recorder is not None:
+            self.finish_recording()
+        elif self.mode == "done" and self.edl is not None:
+            self.polish = getattr(self, "polish", False)
+            self.render()
 
     def finish_recording(self):
         if self.recorder is None:
