@@ -573,13 +573,13 @@ class MainWindow(QMainWindow):
         except (OSError, ValueError, AttributeError):
             return None
 
-    def _prepared(self, edl, clean):
+    def _prepared(self, edl, clean, quality=None):
         self.edl, self.clean = edl, clean
         self._show_plan(edl.output_duration())
         self.timer.setText(_hms(edl.output_duration()))
         self._set_mode("review")
         self.companion.say("review")
-        dlg = ReviewDialog(edl, clean, self, capture=self._capture_report())
+        dlg = ReviewDialog(edl, clean, self, capture=self._capture_report(), quality=quality)
         if dlg.exec():
             self.polish = dlg.polish.isChecked()
             self.render()

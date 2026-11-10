@@ -7,9 +7,11 @@ import traceback
 from pathlib import Path
 
 import numpy as np
+import soundfile as sf
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from core.asset_cache import AssetCache
+from core.audio_quality import analyze
 from core.config import RenderConfig
 from core.edl import EditList
 from core.session import Session, denoise, finish, import_take, prepare
@@ -19,7 +21,7 @@ class PrepareWorker(QThread):
     """Imported file: import → noise removal → edits. Recorded take: edits only (the live ear
     already heard the planes and noise removal ran during the take)."""
     stage = pyqtSignal(str)
-    done = pyqtSignal(object, object)     # EditList, clean ndarray
+    done = pyqtSignal(object, object, object)     # EditList, clean ndarray, QualityReport
     failed = pyqtSignal(str)
 
     def __init__(self, session: Session, import_src: Path | None = None, recording=None,
@@ -44,8 +46,12 @@ class PrepareWorker(QThread):
                 self.stage.emit("Finding pauses…")
                 edl = prepare(self.session, None, clean, ear_events=rec.ear_events,
                               render_cfg=self.cfg)
+            source, _ = sf.read(self.session.raw, dtype="float32", always_2d=False)
+            if source.ndim > 1:
+                source = source.mean(axis=1)
+            quality = analyze(source, clean)
             self.stage.emit(f"Ready to review ({time.perf_counter() - t0:.0f}s)")
-            self.done.emit(edl, clean)
+            self.done.emit(edl, clean, quality)
         except Exception:
             self.failed.emit(traceback.format_exc())
 

@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (QCheckBox, QDialog, QDoubleSpinBox, QFrame, QHBoxLa
                              QPushButton, QScrollArea, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
 from core.edl import EditList
+from core.audio_quality import QualityReport, analyze
 from core.renderer import fmt_hms, fmt_mmss
 
 from . import theme
@@ -33,7 +34,8 @@ def play(x: np.ndarray) -> None:
 
 
 class ReviewDialog(QDialog):
-    def __init__(self, edl: EditList, clean: np.ndarray, parent=None, capture: dict | None = None):
+    def __init__(self, edl: EditList, clean: np.ndarray, parent=None, capture: dict | None = None,
+                 source: np.ndarray | None = None, quality: QualityReport | None = None):
         super().__init__(parent)
         self.setWindowTitle("Review edits")
         self.resize(760, 620)
@@ -49,6 +51,14 @@ class ReviewDialog(QDialog):
         self.check.setWordWrap(True)
         self.check.setVisible(capture is not None)          # imported takes: nothing to report
         lay.addWidget(self.check)
+        self.quality_check = QLabel()
+        self.quality_check.setWordWrap(True)
+        self.quality_check.setVisible(source is not None or quality is not None)
+        lay.addWidget(self.quality_check)
+        if quality is None and source is not None:
+            quality = analyze(source, clean)
+        if quality is not None:
+            self._show_quality(quality)
         # every recorded loss spot gets its own ▶; a scrolling strip holds up to MAX_LOST_SPOTS of them
         self.lost_row = QHBoxLayout()
         self.lost_row.setContentsMargins(0, 0, 0, 0)
@@ -104,6 +114,17 @@ class ReviewDialog(QDialog):
         self._fill()
 
     # ------------------------------------------------------------------ recording check
+
+    def _show_quality(self, report: QualityReport) -> None:
+        if report.passed:
+            self.quality_check.setText(
+                f"Audio quality: OK · peak {report.peak_dbfs:.1f} dBFS · "
+                f"true peak {report.true_peak_dbfs:.1f} dBFS · distortion {report.distortion_db:.1f} dB.")
+            self.quality_check.setStyleSheet(f"color:{theme.GREEN};")
+        else:
+            self.quality_check.setText("Audio quality warning: " + "; ".join(report.warnings) +
+                                      ". Record this take again before finishing.")
+            self.quality_check.setStyleSheet(f"color:{theme.RED}; font-weight:600;")
 
     def _show_capture(self, cap: dict) -> None:
         spots = list(cap.get("lost_at_s", []))
