@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import collections
 import concurrent.futures as cf
+import json
 import queue
 import threading
 import time
@@ -29,7 +30,7 @@ from typing import Callable, Protocol
 import numpy as np
 import soundfile as sf
 
-from .denoise import SpectralGate, deepfilter_array, deepfilter_exe
+from .denoise import DFN_PREROLL_S, SpectralGate, deepfilter_array, deepfilter_exe
 from .plane_guard.ear import Ear
 from .plane_guard.guard import Guard, GuardUpdate
 from .plane_guard.sky_radar import Home, SkyRadar
@@ -37,6 +38,7 @@ from .session import Session
 
 SR = 48000
 BLOCK = 4800                     # 100 ms
+CLIP_LEVEL = 0.999               # |sample| at or above this counts as clipped (16-bit max is 0.99997)
 
 
 # =========================================================================== sources
@@ -52,7 +54,8 @@ class MicSource:
     def __init__(self, device: int | str | None = None):
         self.device = device
         self.stream = None
-        self.overflows = 0
+        self.overflows = 0              # PortAudio input overflows: samples lost → clicks
+        self.info: dict = {}
 
     def start(self, on_block):
         import sounddevice as sd
@@ -65,6 +68,12 @@ class MicSource:
         self.stream = sd.InputStream(device=self.device, samplerate=SR, channels=1, dtype="float32",
                                      blocksize=BLOCK, callback=cb)
         self.stream.start()
+        try:
+            d = sd.query_devices(self.stream.device)
+            self.info = {"device": d["name"], "host_api": sd.query_hostapis(d["hostapi"])["name"],
+                         "device_default_rate": d["default_samplerate"], "stream_rate": self.stream.samplerate}
+        except Exception:
+            self.info = {}
 
     def stop(self):
         if self.stream is not None:
@@ -117,6 +126,10 @@ class LiveStatus:
     chime: bool = False
     dropped_blocks: int = 0
     denoise_backend: str = ""
+    clipped_samples: int = 0         # at/near full scale: the mic input is too loud (harsh, clipped)
+    over_full_scale: int = 0         # float input beyond ±1.0 (WASAPI); raw.flac stores these clipped
+    overflows: int = 0               # input buffers lost by the sound driver (crackle)
+    last_clip_s: float | None = None # take time of the latest clipped block
 
 
 @dataclass
@@ -159,10 +172,12 @@ class Recorder:
         self._pending: list[np.ndarray] = []        # raw blocks of the current DFN segment
         self._pending_len = 0
         self._pending_db: list[float] = []
+        self._dfn_context = np.zeros(0, np.float32)     # end of the previous segment: model pre-roll
         self._futures: list[cf.Future] = []
         self._pool = cf.ThreadPoolExecutor(max_workers=2) if self.use_dfn else None
         self._raw_file: sf.SoundFile | None = None
         self._recent = collections.deque(maxlen=int(30 * SR / BLOCK))   # last 30 s for "listen back"
+        self._peak_db = -120.0
 
     # ------------------------------------------------------------------ control
 
@@ -217,8 +232,25 @@ class Recorder:
             clean = np.concatenate(self._clean_parts + [tail])[self._gate.latency_samples:]
         clean = np.concatenate([clean, np.zeros(max(0, self._samples - len(clean)), np.float32)])[: self._samples]
         sf.write(self.session.clean, clean, SR, subtype="FLOAT")
+        self._write_capture_report()
         return RecordingResult(self.session.raw, clean, list(self.ear.events), self.take_s,
                                self.status.denoise_backend, list(self.guard.history))
+
+    def capture_report(self) -> dict:
+        """What the input actually delivered (T7): device, clipping, lost buffers. Saved as
+        capture.json next to raw.flac, so a take recorded elsewhere can be diagnosed from it."""
+        s = self.status
+        return {"take_s": round(self.take_s, 2), "denoise_backend": s.denoise_backend,
+                **getattr(self.source, "info", {}),
+                "peak_dbfs": round(self._peak_db, 2), "clipped_samples": s.clipped_samples,
+                "over_full_scale_samples": s.over_full_scale,
+                "input_overflows": getattr(self.source, "overflows", 0), "dropped_blocks": s.dropped_blocks}
+
+    def _write_capture_report(self) -> None:
+        try:
+            (self.session.dir / "capture.json").write_text(json.dumps(self.capture_report(), indent=2), "utf-8")
+        except OSError:
+            pass
 
     # ------------------------------------------------------------------ threads
 
@@ -244,11 +276,22 @@ class Recorder:
             self._raw_file.write(b)
             self._recent.append(b)
             self._samples += len(b)
+            self._check_input(b)
             with self._lock:
                 self.ear.feed(b)
                 upd = self.guard.tick(self.take_s)
             self._denoise(b)
             self._publish(upd)
+
+    def _check_input(self, b: np.ndarray) -> None:
+        a = np.abs(b)
+        self._peak_db = max(self._peak_db, self.status.peak_db)
+        clipped = int(np.count_nonzero(a >= CLIP_LEVEL))
+        if clipped:
+            self.status.clipped_samples += clipped
+            self.status.over_full_scale += int(np.count_nonzero(a > 1.0))
+            self.status.last_clip_s = self.take_s
+        self.status.overflows = getattr(self.source, "overflows", 0)
 
     def _publish(self, upd: GuardUpdate | None) -> None:
         s = self.status
@@ -297,4 +340,6 @@ class Recorder:
             return
         seg = np.concatenate(self._pending)
         self._pending, self._pending_len, self._pending_db = [], 0, []
-        self._futures.append(self._pool.submit(deepfilter_array, seg, SR, 100.0, 1, self.session.dir))
+        ctx = self._dfn_context
+        self._dfn_context = np.concatenate([ctx, seg])[-int(DFN_PREROLL_S * SR):]
+        self._futures.append(self._pool.submit(deepfilter_array, seg, SR, 100.0, 1, self.session.dir, ctx))
