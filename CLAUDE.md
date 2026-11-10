@@ -122,6 +122,10 @@ makes speaking hard → "Listen back (last 15 s)" while paused instead.
   `%LOCALAPPDATA%\HushStudio\logs`, loggers `hush.{app,capture,denoise,render,upload}`, a redacting filter (tokens, secrets,
   upload ids, tracebacks included), startup report (app/Windows/Python/Qt/FFmpeg versions, input devices + host API), and a
   global `sys`/`threading` excepthook that logs the traceback and shows a friendly box. Per-take `capture.json` is unchanged.
+- **Debug bundle (T20, `core/debug_bundle.py`, `ui/debug_report.py`):** Help > Send debug report → zip Sam saves (flash drives
+  listed first, "Copy to flash drive" after) with logs, system info, settings (secret keys dropped, values redacted), and for the
+  chosen take capture.json + the `core.diagnostics` stage report. Audio only as ticked ~6 s clips around clipping / dropouts /
+  lost sound (none ticked by default; D06: nothing is uploaded). `python -m core.diagnostics bundle.zip` prints the same report.
 - **Live capture (`core/capture.py`):** callback only enqueues; full queue drops + counts (a
   simulated faster-than-real-time source uses backpressure instead). USB mic verified at 48 kHz.
 

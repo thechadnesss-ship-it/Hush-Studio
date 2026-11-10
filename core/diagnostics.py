@@ -1,6 +1,7 @@
 """Per-stage audio check of a session (T7): where does clipping or a dropout first appear?
 
     python -m core.diagnostics sessions/<timestamp>
+    python -m core.diagnostics bundle.zip          # a debug bundle (T20), same report
 
 Measures each stage file that exists (raw.flac → clean.wav → session.m4a → output_*.mp4) and
 prints one line per stage, plus capture.json (what the mic delivered: device, clipping, lost
@@ -123,5 +124,9 @@ def format_report(rep: dict) -> str:
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        sys.exit("usage: python -m core.diagnostics <session folder>")
-    print(format_report(stage_report(sys.argv[1])))
+        sys.exit("usage: python -m core.diagnostics <session folder | bundle.zip>")
+    if sys.argv[1].lower().endswith(".zip"):
+        from .debug_bundle import read_bundle
+        print(format_report(read_bundle(sys.argv[1])))
+    else:
+        print(format_report(stage_report(sys.argv[1])))
