@@ -29,7 +29,8 @@ Never commit `engine_plan.json` on a task branch; it is committed on `main` only
   `C:\Users\chadj\hush-studio-codex`. Narthen Control creates them on first use. Do not work in the main
   folder unless the task says so.
 - Never commit to `main` from a task branch. Sam merges to `main` after review (Narthen Control: Run code
-  review, then Merge & finish). Merge `main` into your branch at the start of a task.
+  review, then Merge & finish). Merge `main` into your branch at the start of a task **and again just before setting status=Review**
+  (resolve any conflicts and re-run the tests); otherwise Narthen Control's Merge & finish refuses with a conflict message.
 - Do not both edit the same zone at once; stay inside the task's zone (see the plan's zones).
 
 ## Review and hand-back
