@@ -597,7 +597,8 @@ class MainWindow(QMainWindow):
         from .editor import EditorDialog
         self._set_mode("review")
         self.companion.say("review")
-        dlg = EditorDialog(self.session.dir, self.edl, self.clean, self)
+        dlg = EditorDialog(self.session.dir, self.edl, self.clean, self,
+                           auto_cfg=self._cfg().auto_edit_config())     # same pause shaping as import / REC
         r = dlg.exec()
         self.clean = dlg.editor.audio               # the audio the edits refer to (an Audacity version, maybe)
         self._show_plan(self.edl.output_duration())
