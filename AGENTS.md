@@ -8,7 +8,9 @@
    (repo `Narthen-Control`, local folder `C:\Users\chadj\Narthen-Control`). Tasks, priorities, tiers, decisions.
    Never edit the JSON by hand; use the plan tool below. The plan lives only in the main folder; every worktree
    reads and writes that same file, and the plan tool finds it for you.
-3. The code and `pytest` (`.venv\Scripts\python -m pytest -q`; must stay green).
+3. The code and `pytest`; must stay green. Worktrees have no `.venv` of their own. From inside your worktree run
+   `C:\Users\chadj\pika_meditate\.venv\Scripts\python.exe -m pytest -q` (it loads your worktree's code, not the main folder's).
+   Do not install packages or create another venv.
 
 ## Plan tool
 Always call it by full path (it is not inside this repo), e.g.:
