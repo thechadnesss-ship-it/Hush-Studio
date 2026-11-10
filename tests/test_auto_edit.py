@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from core.auto_edit import AutoEditConfig, auto_edit, find_markers, shape_pauses
+from core.config import load_render_config
 from core.edl import EditList
 from core.vad import detect_pauses, detect_speech
 from synth import SR, phrase, room_tone
@@ -121,6 +122,29 @@ def test_none_induction_pause_keeps_normal_marker_length():
     speech = [(200.0, 201.0), (204.0, 205.0), (210.0, 211.0)]
     pauses = shape_pauses(speech, 220.0, cfg, markers=[1])
     assert [p.new_length for p in pauses if p.kind == "marker"] == [10.0]
+
+
+def test_induction_boundaries_include_180_but_exclude_720_and_need_full_take():
+    at_start = shape_pauses([(170.0, 171.0), (180.0, 181.0), (190.0, 191.0)],
+                            800.0, AutoEditConfig(), markers=[1])
+    assert [p.new_length for p in at_start if p.kind == "marker"] == [5.0]
+
+    at_end = shape_pauses([(710.0, 711.0), (720.0, 721.0), (730.0, 731.0)],
+                          800.0, AutoEditConfig(), markers=[1])
+    assert [p.new_length for p in at_end if p.kind == "marker"] == [10.0]
+
+    short_take = shape_pauses([(170.0, 171.0), (180.0, 181.0), (190.0, 191.0)],
+                              719.0, AutoEditConfig(), markers=[1])
+    assert [p.new_length for p in short_take if p.kind == "marker"] == [10.0]
+
+
+def test_render_config_exposes_induction_marker_settings():
+    cfg = load_render_config()
+    auto = cfg.auto_edit_config()
+    assert auto.marker_pause_s == cfg.marker_pause_s
+    assert auto.induction_marker_pause_s == cfg.induction_marker_pause_s
+    assert auto.induction_end_s == cfg.induction_end_s
+    assert auto.induction_min_start_s == cfg.induction_min_start_s
 
 
 @pytest.mark.skipif(not RAW.exists(), reason="Sam's raw reference take not present")

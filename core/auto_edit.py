@@ -116,21 +116,25 @@ def shape_pauses(speech: list[tuple[float, float]], duration: float, cfg: AutoEd
         return out
     if kept[0][1][0] > cfg.lead_s:
         out.append(Pause(0.0, kept[0][1][0], cfg.lead_s, kind="lead"))
+    marker_cursor = 0
     for (_, (_, a_end)), (_, (b_start, _)) in zip(kept, kept[1:]):
         if b_start - a_end <= 0 or overlaps_cut(a_end, b_start):
             continue
-        marker_cursor = bisect_left(marker_starts, a_end)
-        gap_markers = []
+        marker_cursor = max(marker_cursor, bisect_left(marker_starts, a_end))
+        gap_marker = None
         while marker_cursor < len(marker_spans):
             ms, me = marker_spans[marker_cursor]
             if ms > b_start:
                 break
             if me <= b_start:
-                gap_markers.append((ms, me))
+                if gap_marker is None:
+                    gap_marker = (ms, me)
+                marker_cursor += 1
+                continue
             marker_cursor += 1
         length = b_start - a_end
-        if gap_markers:
-            marker_start = gap_markers[0][0]
+        if gap_marker is not None:
+            marker_start = gap_marker[0]
             marker_pause_s = cfg.marker_pause_s
             if (induction_enabled and cfg.induction_marker_pause_s is not None
                     and cfg.induction_min_start_s <= marker_start < cfg.induction_end_s):
