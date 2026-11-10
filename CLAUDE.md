@@ -1,7 +1,8 @@
 # CLAUDE.md — Hush Studio (formerly PikaMeditate Studio; Design Doc v2: "Encode Once, Copy Forever")
 
 > **Two-agent workflow (Claude Code + Codex):** this file is the architectural source of truth;
-> `ops/state.json` (edited only via `python ops/control.py`) holds tasks, priorities and budget;
+> `ops/state.json` (edited only via `python ops/control.py`) holds tasks, priorities and the subscription-usage budget
+> (live Claude + Codex 5 h / weekly usage; Claude works on `main`, Codex in worktree `../pika_meditate_codex` on branch `codex`);
 > Codex reads `AGENTS.md`. Start every session with `python ops/control.py list`.
 
 > **For Claude Code:** This is the architectural baseline. The #1 product requirement is
