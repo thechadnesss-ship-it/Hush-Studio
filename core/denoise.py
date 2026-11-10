@@ -222,30 +222,71 @@ def pause_split_points(x: np.ndarray, sr: int, parts: int, min_pause_s: float = 
     return out
 
 
+DFN_PREROLL_S = 3.0       # context fed before each part, then discarded: joins match a whole-file run (≤ −58 dB)
+DFN_TAIL_PAD_S = 0.1      # reflected audio fed after each part: the CLI's output is 30–40 ms short
+DFN_HEADROOM = 0.9        # the CLI writes 16-bit PCM, which hard-clips at ±1.0
+DFN_FLOOR_DBFS = -65.0    # white floor added to the CLI's input (it removes it again), see below
+_DFN_FLOOR = np.random.default_rng(7).standard_normal(1 << 20).astype(np.float32)
+
+
 def deepfilter_array(x: np.ndarray, sr: int = SR, attenuation_limit_db: float = 100.0,
-                     workers: int | None = None, work_dir: Path | None = None) -> np.ndarray:
+                     workers: int | None = None, work_dir: Path | None = None,
+                     context: np.ndarray | None = None) -> np.ndarray:
     """DeepFilterNet over an array, split at natural pauses and run on all cores at once
     (≈ 83 s single-process for 33 min on a 4-core i5). Returns float32 aligned to the input
-    and exactly its length. The model's state restarts at each split, inside a pause."""
+    and exactly its length.
+
+    Seamless joins (T7, measured on Sam's voice split mid-word): each part is fed with
+    `DFN_PREROLL_S` of the audio before it (or `context`, the end of the previous live segment)
+    and `DFN_TAIL_PAD_S` of its own audio, reflected, after it; then trimmed. Without this, every
+    part ended in 30–40 ms of digital zero (the CLI drops 1440 samples + the last partial hop)
+    and the next one restarted the model cold (up to 30 dB low for its first frames): a dropout
+    click wherever a split landed in speech.
+    The CLI's 16-bit output would also hard-clip any input above full scale (WASAPI delivers
+    float, which can exceed ±1.0), so loud input is scaled into range and scaled back after.
+
+    The CLI also outputs exact zeros for frames quieter than ≈ −72 dBFS *and for the 30 ms of
+    real audio before them* (its delay compensation): on Sam's gated Riverside take, 88% of the
+    384 phrase endings lost their last 30 ms. A −65 dBFS white floor on its input keeps every
+    frame above that threshold; the model removes the floor again (pauses come out ≈ −97 dBFS)."""
     import concurrent.futures as cf
     workers = workers or max(1, os.cpu_count() or 1)
     x = np.asarray(x, dtype=np.float32)
+    pre = int(DFN_PREROLL_S * sr)
+    ctx = np.zeros(0, np.float32) if context is None or pre == 0 else np.asarray(context, np.float32)[-pre:]
+    peak = float(max(np.abs(x).max(initial=0.0), np.abs(ctx).max(initial=0.0)))
+    scale = np.float32(DFN_HEADROOM / peak if peak > DFN_HEADROOM else 1.0)
+    floor = np.float32(10 ** (DFN_FLOOR_DBFS / 20))
+    off = len(ctx)                                 # x starts here in the virtual stream [ctx, x]
+
+    def stream(lo: int, hi: int) -> np.ndarray:
+        """[ctx, x][lo:hi], scaled, plus the floor (built per part: no full-take copies)."""
+        seg = np.concatenate([ctx[lo:min(hi, off)], x[max(lo - off, 0):max(hi - off, 0)]]) * scale
+        return seg + np.resize(np.roll(_DFN_FLOOR, -(lo % len(_DFN_FLOOR))), hi - lo) * floor
+
     cuts = [0, *pause_split_points(x, sr, workers), len(x)]
+    pad = int(DFN_TAIL_PAD_S * sr)
     with tempfile.TemporaryDirectory(dir=work_dir) as td:
         td = Path(td)
 
         def one(i: int) -> np.ndarray:
-            a, b = cuts[i], cuts[i + 1]
+            a, b = cuts[i] + off, cuts[i + 1] + off
+            lead = min(pre, a)
+            seg = stream(a - lead, b)
+            # reflected, not zeros: zeros (or anything under ≈ −72 dBFS) blank the last 30 ms
             src, dst = td / f"in{i:02d}.wav", td / f"out{i:02d}.wav"
-            sf.write(src, x[a:b], sr, subtype="FLOAT")
+            sf.write(src, np.concatenate([seg, seg[max(0, len(seg) - pad):][::-1]]), sr, subtype="FLOAT")
+            del seg
             deepfilter_file(src, dst, attenuation_limit_db)
             y, _ = sf.read(dst, dtype="float32")
             n = b - a
-            return np.concatenate([y[:n], np.zeros(max(0, n - len(y)), np.float32)])
+            y = y[lead:lead + n]
+            return np.concatenate([y, np.zeros(max(0, n - len(y)), np.float32)])
 
         with cf.ThreadPoolExecutor(max_workers=workers) as ex:
             parts = list(ex.map(one, range(len(cuts) - 1)))
-    return np.concatenate(parts) if parts else np.zeros(0, np.float32)
+    y = np.concatenate(parts) if parts else np.zeros(0, np.float32)
+    return y / scale if scale != 1.0 else y
 
 
 def best_backend_name() -> str:

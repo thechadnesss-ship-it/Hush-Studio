@@ -98,6 +98,22 @@ makes speaking hard → "Listen back (last 15 s)" while paused instead.
   **never test it on synthetic voices** (it removes them). 83 s/33 min single-process → split at
   pauses on all cores = 44 s; during live REC, finished ~60 s segments run in the background.
   Built-in `SpectralGate` fallback (vectorised, exact for any chunk size): ≈ 17 dB steady noise.
+- **`deep-filter.exe` quirks (T7, 2026-11-10; source of the "crackle" report):** (1) it outputs exact zeros for
+  any frame under ≈ −72 dBFS **and for the 30 ms of real audio before it** (delay compensation). On Sam's
+  gated Riverside take that blanked 88% of 384 phrase endings and left **370 dropouts** (5–60 ms of digital
+  zero inside sound) in clean.wav → 232 in session.m4a → 247 in the MP4; raw had 0. Fix: a −65 dBFS white
+  floor on its input (the model removes it; pauses come out ≈ −97 dBFS) → 0 dropouts at every stage.
+  (2) Output is 1440 samples + the last partial 480-hop short → each part/segment ended in 30–40 ms of
+  zeros; now fed a 0.1 s reflected tail (zeros or quiet noise trigger (1)). (3) Each part restarted cold
+  (up to 30 dB low for its first frames) → 3 s of pre-roll context, also across live REC segments: a
+  mid-word split now matches a whole-file run to ≤ −44 dB. (4) 16-bit output hard-clips input above
+  ±1.0 (WASAPI float can exceed it) → scaled into range and back. Voice fidelity on clean input: 1.6 dB
+  log-spectral distance, HF unchanged. Auto-edit on her take after the fix: 91 markers, 72.6% silence.
+- **Capture diagnostics (T7):** every live take writes `capture.json` (device, host API, peak, clipped
+  samples, samples beyond full scale, input overflows, dropped blocks). `python -m core.diagnostics
+  sessions/<ts>` prints peak / LUFS / clipped / flat tops / dropouts per stage (raw → clean → m4a → MP4).
+  The UI's mic picker opens WASAPI devices (float, can exceed ±1.0); "Default microphone" opens MME (16-bit).
+  The USB PnP mic here: speech ≈ −40 LUFS at normal distance, room ≈ −56 dBFS → ~15 dB SNR, +24 dB make-up.
 - **Live capture (`core/capture.py`):** callback only enqueues; full queue drops + counts (a
   simulated faster-than-real-time source uses backpressure instead). USB mic verified at 48 kHz.
 

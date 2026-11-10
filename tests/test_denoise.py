@@ -86,3 +86,60 @@ def test_deepfilternet_removes_a_plane_from_real_voice(tmp_path):
     pause[: 3 * SR] = False
     assert rms_db(y[pause]) - rms_db(out[pause]) > 25           # measured ≈ 33 dB (gate: ≈ 15)
     assert abs(rms_db(out[sp]) - rms_db(voice[sp])) < 1.0       # her voice level kept
+
+
+# ---------------------------------------------------------------- T7: no dropouts, clipping or cold joins
+
+def _sam(seconds: float, start_s: float = 120.0):
+    from core.session import load_mono_48k
+    return load_mono_48k(REAL_RAW)[int(start_s * SR): int((start_s + seconds) * SR)]
+
+
+needs_dfn_and_sam = pytest.mark.skipif(deepfilter_exe() is None or not REAL_RAW.exists(),
+                                       reason="needs DeepFilterNet and Sam's raw take")
+
+
+@needs_dfn_and_sam
+def test_deepfilternet_keeps_word_endings_before_gated_silence(tmp_path):
+    """The CLI zeroes frames under ≈ −72 dBFS and the 30 ms before them: on her gated take that
+    cut 88% of phrase endings and left 370 dropouts per 33 min (before T7)."""
+    from core.denoise import deepfilter_array
+    from core.diagnostics import zero_gaps
+    x = _sam(60.0)
+    y = deepfilter_array(x, SR, workers=2, work_dir=tmp_path)
+    assert zero_gaps(y) == []
+    H = 480
+    lv = 10 * np.log10((x[: len(x) // H * H].reshape(-1, H).astype(np.float64) ** 2).mean(1) + 1e-20)
+    ends = [i * H for i in range(6, len(lv) - 5)
+            if (lv[i:i + 5] < -72).all() and lv[i - 1] >= -72 and lv[i - 4:i].max() > -50]
+    assert len(ends) >= 5
+    zeroed = sum(bool(np.all(y[e - 1440:e] == 0)) for e in ends)
+    assert zeroed == 0, f"{zeroed}/{len(ends)} phrase endings blanked"
+
+
+@needs_dfn_and_sam
+def test_deepfilternet_mid_word_split_matches_a_whole_file_run(tmp_path):
+    """Live REC denoises ~60 s segments; a split inside a word must not click or restart cold."""
+    from core.denoise import deepfilter_array
+    x = _sam(20.0)
+    sp = detect_speech(x, SR)
+    s, e = max(sp, key=lambda r: r[1] - r[0])
+    split = int((s + e) / 2 * SR)
+    whole = deepfilter_array(x, SR, workers=1, work_dir=tmp_path)
+    a = deepfilter_array(x[:split], SR, workers=1, work_dir=tmp_path)
+    b = deepfilter_array(x[split:], SR, workers=1, work_dir=tmp_path, context=x[:split])
+    joined = np.concatenate([a, b])
+    w = slice(split - 4800, split + 4800)                         # ±100 ms around the join
+    assert rms_db(whole[w]) - rms_db(joined[w] - whole[w]) > 35   # measured ≥ 44 dB (≈ 22 dB before T7)
+
+
+@needs_dfn_and_sam
+def test_deepfilternet_input_above_full_scale_is_not_clipped(tmp_path):
+    """WASAPI float input can exceed ±1.0; the CLI's 16-bit output used to hard-clip it."""
+    from core.denoise import deepfilter_array
+    from core.diagnostics import flat_top_runs
+    x = _sam(20.0)
+    x = x * (10 ** (3 / 20) / np.abs(x).max())                    # peak +3 dBFS
+    y = deepfilter_array(x, SR, workers=1, work_dir=tmp_path)
+    assert np.abs(y).max() > 1.2
+    assert flat_top_runs(y) == 0

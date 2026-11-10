@@ -73,6 +73,8 @@ def test_background_deepfilternet_segments_cover_the_take(tmp_path):
     assert res.backend == "DeepFilterNet"
     assert len(rec._futures) >= 3                           # ≥ 2 finished in the background + the tail
     assert len(res.clean) == len(x)
+    from core.diagnostics import zero_gaps
+    assert zero_gaps(res.clean) == []                       # T7: no dropouts at segment joins
 
 
 def test_listen_back_returns_last_seconds_cleaned(tmp_path):
@@ -82,3 +84,22 @@ def test_listen_back_returns_last_seconds_cleaned(tmp_path):
     assert len(y) == 15 * SR
     # it's the end of the take (aligned), and not louder than the input
     assert np.sqrt(np.mean(y ** 2)) <= np.sqrt(np.mean(x[-15 * SR:] ** 2)) * 1.05
+
+
+def test_capture_report_counts_clipping_and_is_saved(tmp_path):
+    """T7: a too-loud mic must be visible (status + capture.json), not silently baked in."""
+    import json
+    x, _ = speech_take(15.0, -24, seed=83)
+    x = (x / np.abs(x).max() * 1.5).astype(np.float32)          # float input past full scale
+    rec, res, _ = record(x, tmp_path)
+    assert rec.status.clipped_samples > 0 and rec.status.over_full_scale > 0
+    rep = json.loads((rec.session.dir / "capture.json").read_text("utf-8"))
+    assert rep["clipped_samples"] == rec.status.clipped_samples
+    assert rep["over_full_scale_samples"] > 0 and rep["take_s"] == pytest.approx(15.0, abs=0.1)
+    assert rep["peak_dbfs"] > 3.0
+
+
+def test_clean_take_reports_no_clipping(tmp_path):
+    x, _ = speech_take(10.0, -24, seed=84)
+    rec, _, _ = record(x.astype(np.float32), tmp_path)
+    assert rec.status.clipped_samples == 0 and rec.status.over_full_scale == 0
