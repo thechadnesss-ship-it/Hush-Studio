@@ -19,6 +19,7 @@ from core.renderer import fmt_hms, fmt_mmss
 from . import theme
 
 MAX_LOST_BUTTONS = 8
+from core.capture import MAX_LOST_SPOTS
 
 SR = 48000
 
@@ -96,10 +97,9 @@ class ReviewDialog(QDialog):
 
     def _show_capture(self, cap: dict) -> None:
         spots = list(cap.get("lost_at_s", []))
-        raw_lost = int(cap.get("input_overflows", 0)) + int(cap.get("dropped_blocks", 0))
-        # T8 reports coalesced loss spots (one per 0.5 s), so this is the count
-        # the listener can actually review. Fall back for older capture.json files.
-        lost = len(spots) if spots else raw_lost
+        # total lost buffers (every one counts) is separate from the capped, 0.5 s-merged spots
+        # that can be played; older capture.json files only have the two raw counters.
+        lost = int(cap.get("lost_buffers", int(cap.get("input_overflows", 0)) + int(cap.get("dropped_blocks", 0))))
         clipped = int(cap.get("clipped_samples", 0))
         self.lost_count, self.clipped_count = lost, clipped
         if not lost and not clipped:
@@ -108,7 +108,9 @@ class ReviewDialog(QDialog):
             return
         lines = []
         if lost:
-            lines.append(f"Sound was lost {lost} time{'s' if lost != 1 else ''} while recording "
+            where = (f" in {len(spots)} spot{'s' if len(spots) != 1 else ''}"
+                     + (f" (showing the first {len(spots)})" if len(spots) >= MAX_LOST_SPOTS else "")) if spots else ""
+            lines.append(f"Sound was lost {lost} time{'s' if lost != 1 else ''}{where} while recording "
                          f"(the computer was too busy). Listen to {'each spot' if spots else 'the take'}; "
                          "if it sounds cut, record again.")
         if clipped:

@@ -60,8 +60,28 @@ def test_callback_never_blocks_when_worker_lags(tmp_path):
     for _ in range(10):
         rec._enqueue(np.zeros(BLOCK, np.float32))
     assert rec.status.dropped_blocks == 8
+    rec._resolve_losses()                                   # worker not started: resolve by hand
+    rec._consumed = 2                                       # it caught up with the 2 accepted blocks
+    rec._resolve_losses()
     assert rec.status.lost_at_s == [0.0]                    # T8: where, once per 0.5 s
-    assert rec.capture_report()["lost_at_s"] == [0.0]
+    rep = rec.capture_report()
+    assert rep["lost_at_s"] == [0.0] and rep["lost_buffers"] == 8   # total kept apart from spots
+
+
+def test_lost_spot_time_is_where_it_happened_not_when_processed(tmp_path):
+    """T8: with the worker 3 s behind, a drop is stamped at its own take position."""
+    rec = Recorder(Session(tmp_path / "s"), source=ArraySource(np.zeros(SR, np.float32)), use_radar=False)
+    rec.q.maxsize = 30
+    for _ in range(30):                                     # 3.0 s accepted, worker idle
+        rec._enqueue(np.zeros(BLOCK, np.float32))
+    rec._enqueue(np.zeros(BLOCK, np.float32))               # queue full: dropped at 3.0 s
+    rec.source.overflows = 1                                # driver loses sound before the next block
+    rec.q.get_nowait(); rec._consumed += 1                  # one block consumed → room again
+    rec._samples = 30 * BLOCK                               # worker has now processed to 3.0 s
+    rec._enqueue(np.zeros(BLOCK, np.float32))
+    rec._consumed = 31; rec._resolve_losses()
+    assert rec.status.dropped_blocks == 1
+    assert rec.status.lost_at_s == [pytest.approx(3.0)]     # both losses sit at the 3.0 s boundary
 
 
 @pytest.mark.skipif(not REAL_RAW.exists(), reason="Sam's raw take not present")
