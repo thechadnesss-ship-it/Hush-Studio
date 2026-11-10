@@ -268,8 +268,9 @@ class Recorder:
     def _enqueue(self, block: np.ndarray) -> None:      # runs in the audio callback
         overflows = getattr(self.source, "overflows", 0)
         if overflows > self._seen_overflows:            # the driver lost sound just before this block
+            for _ in range(overflows - self._seen_overflows):   # one mark per lost buffer
+                self._loss_marks.append(self._accepted)
             self._seen_overflows = overflows
-            self._loss_marks.append(self._accepted)
         try:
             self.q.put_nowait(block)
             self._accepted += 1

@@ -84,6 +84,18 @@ def test_lost_spot_time_is_where_it_happened_not_when_processed(tmp_path):
     assert rec.status.lost_at_s == [pytest.approx(3.0)]     # both losses sit at the 3.0 s boundary
 
 
+def test_multi_overflow_jump_gets_one_loss_mark_per_buffer(tmp_path):
+    """T8 review: several driver overflows between callbacks → one mark each, none hidden."""
+    rec = Recorder(Session(tmp_path / "s"), source=ArraySource(np.zeros(SR, np.float32)), use_radar=False)
+    rec.source.overflows = 3                                # three buffers lost at once
+    rec._enqueue(np.zeros(BLOCK, np.float32))
+    assert len(rec._loss_marks) == 3
+    rec.source.overflows = 4
+    rec._enqueue(np.zeros(BLOCK, np.float32))
+    assert len(rec._loss_marks) == 4
+    assert rec.capture_report()["lost_buffers"] == 4
+
+
 @pytest.mark.skipif(not REAL_RAW.exists(), reason="Sam's raw take not present")
 def test_background_deepfilternet_segments_cover_the_take(tmp_path):
     from core.denoise import deepfilter_exe
