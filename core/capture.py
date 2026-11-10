@@ -38,6 +38,7 @@ from .session import Session
 
 SR = 48000
 BLOCK = 4800                     # 100 ms
+MAX_LOST_SPOTS = 200
 CLIP_LEVEL = 0.999               # |sample| at or above this counts as clipped (16-bit max is 0.99997)
 
 
@@ -130,6 +131,7 @@ class LiveStatus:
     over_full_scale: int = 0         # float input beyond ±1.0 (WASAPI); raw.flac stores these clipped
     overflows: int = 0               # input buffers lost by the sound driver (crackle)
     last_clip_s: float | None = None # take time of the latest clipped block
+    lost_at_s: list = field(default_factory=list)   # take times where sound was lost (T8)
 
 
 @dataclass
@@ -244,7 +246,8 @@ class Recorder:
                 **getattr(self.source, "info", {}),
                 "peak_dbfs": round(self._peak_db, 2), "clipped_samples": s.clipped_samples,
                 "over_full_scale_samples": s.over_full_scale,
-                "input_overflows": getattr(self.source, "overflows", 0), "dropped_blocks": s.dropped_blocks}
+                "input_overflows": getattr(self.source, "overflows", 0), "dropped_blocks": s.dropped_blocks,
+                "lost_at_s": [round(t, 2) for t in s.lost_at_s]}
 
     def _write_capture_report(self) -> None:
         try:
@@ -259,6 +262,7 @@ class Recorder:
             self.q.put_nowait(block)
         except queue.Full:
             self.status.dropped_blocks += 1
+            self._mark_lost()
 
     def _work(self) -> None:
         while self._running.is_set() or not self.q.empty():
@@ -291,7 +295,18 @@ class Recorder:
             self.status.clipped_samples += clipped
             self.status.over_full_scale += int(np.count_nonzero(a > 1.0))
             self.status.last_clip_s = self.take_s
-        self.status.overflows = getattr(self.source, "overflows", 0)
+        overflows = getattr(self.source, "overflows", 0)
+        if overflows > self.status.overflows:
+            self._mark_lost()
+        self.status.overflows = overflows
+
+    def _mark_lost(self) -> None:
+        """Remember where in the take sound went missing (once per 0.5 s, at most 200 spots), so
+        review can play each one. Drops and overflows happen in the gap at the current take time."""
+        lost = self.status.lost_at_s
+        t = self.take_s
+        if len(lost) < MAX_LOST_SPOTS and (not lost or t - lost[-1] >= 0.5):
+            lost.append(t)
 
     def _publish(self, upd: GuardUpdate | None) -> None:
         s = self.status

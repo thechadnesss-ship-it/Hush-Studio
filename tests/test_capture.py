@@ -60,6 +60,8 @@ def test_callback_never_blocks_when_worker_lags(tmp_path):
     for _ in range(10):
         rec._enqueue(np.zeros(BLOCK, np.float32))
     assert rec.status.dropped_blocks == 8
+    assert rec.status.lost_at_s == [0.0]                    # T8: where, once per 0.5 s
+    assert rec.capture_report()["lost_at_s"] == [0.0]
 
 
 @pytest.mark.skipif(not REAL_RAW.exists(), reason="Sam's raw take not present")

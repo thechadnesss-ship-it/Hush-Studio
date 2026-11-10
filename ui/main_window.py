@@ -9,6 +9,7 @@ Flow: REC → (guard live) → FINISH → review edits → render → output_<h>
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -515,13 +516,20 @@ class MainWindow(QMainWindow):
 
     # ================================================================== review + render
 
+    def _capture_report(self) -> dict | None:
+        """capture.json of a live take (T7/T8); None for imports."""
+        try:
+            return json.loads((self.session.dir / "capture.json").read_text("utf-8"))
+        except (OSError, ValueError, AttributeError):
+            return None
+
     def _prepared(self, edl, clean):
         self.edl, self.clean = edl, clean
         self._show_plan(edl.output_duration())
         self.timer.setText(_hms(edl.output_duration()))
         self._set_mode("review")
         self.companion.say("review")
-        dlg = ReviewDialog(edl, clean, self)
+        dlg = ReviewDialog(edl, clean, self, capture=self._capture_report())
         if dlg.exec():
             self.polish = dlg.polish.isChecked()
             self.render()
