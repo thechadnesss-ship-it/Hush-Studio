@@ -38,6 +38,7 @@ from .session import Session
 
 SR = 48000
 BLOCK = 4800                     # 100 ms
+MAX_LOST_SPOTS = 200
 CLIP_LEVEL = 0.999               # |sample| at or above this counts as clipped (16-bit max is 0.99997)
 
 
@@ -130,6 +131,7 @@ class LiveStatus:
     over_full_scale: int = 0         # float input beyond ±1.0 (WASAPI); raw.flac stores these clipped
     overflows: int = 0               # input buffers lost by the sound driver (crackle)
     last_clip_s: float | None = None # take time of the latest clipped block
+    lost_at_s: list = field(default_factory=list)   # take times where sound was lost (T8)
 
 
 @dataclass
@@ -164,6 +166,13 @@ class Recorder:
         self._worker: threading.Thread | None = None
         self._radar_t: threading.Thread | None = None
         self._samples = 0
+        # where sound was lost, in callback order: (blocks accepted so far) at the moment of loss.
+        # The worker resolves each to a take time once it has consumed that many blocks (T8), so the
+        # spot stays right when the queue is delayed or full.
+        self._accepted = 0
+        self._consumed = 0
+        self._loss_marks: collections.deque[int] = collections.deque()
+        self._seen_overflows = 0
         # noise removal
         self.use_dfn = deepfilter_exe() is not None
         self.status.denoise_backend = "DeepFilterNet" if self.use_dfn else "SpectralGate"
@@ -244,7 +253,9 @@ class Recorder:
                 **getattr(self.source, "info", {}),
                 "peak_dbfs": round(self._peak_db, 2), "clipped_samples": s.clipped_samples,
                 "over_full_scale_samples": s.over_full_scale,
-                "input_overflows": getattr(self.source, "overflows", 0), "dropped_blocks": s.dropped_blocks}
+                "input_overflows": getattr(self.source, "overflows", 0), "dropped_blocks": s.dropped_blocks,
+                "lost_buffers": getattr(self.source, "overflows", 0) + s.dropped_blocks,
+                "lost_at_s": [round(t, 2) for t in s.lost_at_s]}
 
     def _write_capture_report(self) -> None:
         try:
@@ -255,10 +266,17 @@ class Recorder:
     # ------------------------------------------------------------------ threads
 
     def _enqueue(self, block: np.ndarray) -> None:      # runs in the audio callback
+        overflows = getattr(self.source, "overflows", 0)
+        if overflows > self._seen_overflows:            # the driver lost sound just before this block
+            for _ in range(overflows - self._seen_overflows):   # one mark per lost buffer
+                self._loss_marks.append(self._accepted)
+            self._seen_overflows = overflows
         try:
             self.q.put_nowait(block)
+            self._accepted += 1
         except queue.Full:
             self.status.dropped_blocks += 1
+            self._loss_marks.append(self._accepted)     # the dropped block belongs right here
 
     def _work(self) -> None:
         while self._running.is_set() or not self.q.empty():
@@ -270,13 +288,16 @@ class Recorder:
             self.status.level_db = 20 * np.log10(rms)
             self.status.peak_db = float(20 * np.log10(np.abs(b).max(initial=1e-12)))
             self.status.paused = self._paused
+            self._consumed += 1
             if self._paused:
+                self._resolve_losses(record=False)
                 self._publish(None)
                 continue
             self._raw_file.write(b)
             self._recent.append(b)
             self._samples += len(b)
             self._check_input(b)
+            self._resolve_losses()
             with self._lock:
                 self.ear.feed(b)
                 upd = self.guard.tick(self.take_s)
@@ -292,6 +313,20 @@ class Recorder:
             self.status.over_full_scale += int(np.count_nonzero(a > 1.0))
             self.status.last_clip_s = self.take_s
         self.status.overflows = getattr(self.source, "overflows", 0)
+
+    def _resolve_losses(self, record: bool = True) -> None:
+        """Turn loss marks whose position has been reached into take times (worker thread)."""
+        while self._loss_marks and self._loss_marks[0] <= self._consumed:
+            self._loss_marks.popleft()
+            if record:
+                self._mark_lost(self.take_s)
+
+    def _mark_lost(self, t: float) -> None:
+        """Remember where in the take sound went missing (once per 0.5 s, at most 200 spots), so
+        review can play each one. The total is kept separately (lost_buffers)."""
+        lost = self.status.lost_at_s
+        if len(lost) < MAX_LOST_SPOTS and (not lost or t - lost[-1] >= 0.5):
+            lost.append(t)
 
     def _publish(self, upd: GuardUpdate | None) -> None:
         s = self.status

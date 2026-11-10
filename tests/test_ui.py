@@ -188,3 +188,46 @@ def test_clean_take_shows_no_mic_warning(app, tmp_path):
     w.poll.stop()
     w.recorder.stop()
     w.recorder = None
+
+
+def _review(capture):
+    from ui.review import ReviewDialog
+    edl = EditList(duration=60.0, sample_rate=SR)
+    return ReviewDialog(edl, np.zeros(60 * SR, np.float32), capture=capture)
+
+
+def test_review_shows_lost_sound_before_render(app):
+    """T8: a take that lost sound while recording is obvious in review, with ▶ per spot."""
+    from PyQt6.QtWidgets import QPushButton
+    cap = {"input_overflows": 2, "dropped_blocks": 1, "clipped_samples": 0, "lost_at_s": [12.3, 40.0]}
+    dlg = _review(cap)
+    dlg.show()
+    pump(app, 0.1)
+    assert not dlg.check.isHidden() and "lost 3 times in 2 spots" in dlg.check.text()
+    spots = [dlg.lost_row.itemAt(i).widget() for i in range(dlg.lost_row.count())]
+    assert [b.text() for b in spots if isinstance(b, QPushButton)] == ["▶  0:12", "▶  0:40"]
+    SHOTS.mkdir(exist_ok=True)
+    dlg.grab().save(str(SHOTS / "ui_review_lost.png"))
+
+
+def test_review_has_a_play_button_for_every_lost_spot(app):
+    """T8 review round 2: all recorded spots (up to the 200 cap) are playable, none hidden behind '+N more'."""
+    from PyQt6.QtWidgets import QPushButton
+    from core.capture import MAX_LOST_SPOTS
+    times = [float(i * 3) for i in range(MAX_LOST_SPOTS)]
+    dlg = _review({"input_overflows": 0, "dropped_blocks": 0, "lost_buffers": 500,
+                   "clipped_samples": 0, "lost_at_s": times})
+    dlg.show()
+    pump(app, 0.1)
+    btns = [dlg.lost_row.itemAt(i).widget() for i in range(dlg.lost_row.count())]
+    btns = [b for b in btns if isinstance(b, QPushButton)]
+    assert len(btns) == MAX_LOST_SPOTS and not dlg.lost_strip.isHidden()
+    assert "lost 500 times" in dlg.check.text() and "scroll" in dlg.check.text()
+
+
+def test_review_check_for_a_clean_take_and_an_import(app):
+    ok = _review({"input_overflows": 0, "dropped_blocks": 0, "clipped_samples": 0, "lost_at_s": []})
+    assert ok.check.text() == "Recording check: no lost sound, no clipping." and not ok.check.isHidden()
+    clip = _review({"input_overflows": 0, "dropped_blocks": 0, "clipped_samples": 1500, "lost_at_s": []})
+    assert "clipped (1,500 samples)" in clip.check.text() and "lost" not in clip.check.text()
+    assert _review(None).check.isHidden()                 # imported take: no capture data

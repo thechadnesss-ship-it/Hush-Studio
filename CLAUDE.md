@@ -116,6 +116,8 @@ makes speaking hard → "Listen back (last 15 s)" while paused instead.
   The USB PnP mic here: speech ≈ −40 LUFS at normal distance, room ≈ −56 dBFS → ~15 dB SNR, +24 dB make-up.
   UI: the level meter turns fully red for 2 s after any clipped block (peak tick amber within 6 dB), and a
   red line under it says to turn the mic level down; lost input buffers get their own warning there.
+  Review (T8): live takes show a "Recording check" line from capture.json: lost-sound count with a ▶
+  per spot (`lost_at_s`, take time, merged within 0.5 s, max 200) and clipping, or a green all-clear.
 - **Live capture (`core/capture.py`):** callback only enqueues; full queue drops + counts (a
   simulated faster-than-real-time source uses backpressure instead). USB mic verified at 48 kHz.
 

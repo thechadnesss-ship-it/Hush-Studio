@@ -3,16 +3,22 @@
 * Plane / noise cuts: ▶ preview and "Keep anyway".
 * Pause markers (Sam's spoken marker word → silence): ▶ preview, on/off, and one length for all.
 * Live summary: cuts removed, markers, output length → what the long video will be.
+* Recording check (live takes): sound lost while recording (computer too busy) and mic
+  clipping, from capture.json, with ▶ for each spot, so a bad take is obvious before render.
 """
 from __future__ import annotations
 
 import numpy as np
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import (QCheckBox, QDialog, QDoubleSpinBox, QHBoxLayout, QHeaderView, QLabel,
-                             QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
+from PyQt6.QtWidgets import (QCheckBox, QDialog, QDoubleSpinBox, QFrame, QHBoxLayout, QHeaderView, QLabel,
+                             QPushButton, QScrollArea, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
 from core.edl import EditList
 from core.renderer import fmt_hms, fmt_mmss
+
+from . import theme
+
+from core.capture import MAX_LOST_SPOTS
 
 SR = 48000
 
@@ -27,7 +33,7 @@ def play(x: np.ndarray) -> None:
 
 
 class ReviewDialog(QDialog):
-    def __init__(self, edl: EditList, clean: np.ndarray, parent=None):
+    def __init__(self, edl: EditList, clean: np.ndarray, parent=None, capture: dict | None = None):
         super().__init__(parent)
         self.setWindowTitle("Review edits")
         self.resize(760, 620)
@@ -39,6 +45,25 @@ class ReviewDialog(QDialog):
         self.summary.setStyleSheet("font-size:16px; font-weight:500;")
         self.summary.setWordWrap(True)
         lay.addWidget(self.summary)
+        self.check = QLabel()
+        self.check.setWordWrap(True)
+        self.check.setVisible(capture is not None)          # imported takes: nothing to report
+        lay.addWidget(self.check)
+        # every recorded loss spot gets its own ▶; a scrolling strip holds up to MAX_LOST_SPOTS of them
+        self.lost_row = QHBoxLayout()
+        self.lost_row.setContentsMargins(0, 0, 0, 0)
+        self.lost_strip = QScrollArea()
+        self.lost_strip.setWidgetResizable(True)
+        self.lost_strip.setFrameShape(QFrame.Shape.NoFrame)
+        self.lost_strip.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.lost_strip.setFixedHeight(64)
+        inner = QWidget()
+        inner.setLayout(self.lost_row)
+        self.lost_strip.setWidget(inner)
+        self.lost_strip.setVisible(False)
+        lay.addWidget(self.lost_strip)
+        if capture is not None:
+            self._show_capture(capture)
 
         # --- cuts
         lay.addWidget(QLabel("Cuts (planes and noise). Untick to keep that part."))
@@ -77,6 +102,39 @@ class ReviewDialog(QDialog):
         btns.addWidget(ok)
         lay.addLayout(btns)
         self._fill()
+
+    # ------------------------------------------------------------------ recording check
+
+    def _show_capture(self, cap: dict) -> None:
+        spots = list(cap.get("lost_at_s", []))
+        # total lost buffers (every one counts) is separate from the capped, 0.5 s-merged spots
+        # that can be played; older capture.json files only have the two raw counters.
+        lost = int(cap.get("lost_buffers", int(cap.get("input_overflows", 0)) + int(cap.get("dropped_blocks", 0))))
+        clipped = int(cap.get("clipped_samples", 0))
+        self.lost_count, self.clipped_count = lost, clipped
+        if not lost and not clipped:
+            self.check.setText("Recording check: no lost sound, no clipping.")
+            self.check.setStyleSheet(f"color:{theme.GREEN};")
+            return
+        lines = []
+        if lost:
+            where = (f" in {len(spots)} spot{'s' if len(spots) != 1 else ''}"
+                     + (f" (the first {MAX_LOST_SPOTS} are listed; scroll to hear each)"
+                        if len(spots) >= MAX_LOST_SPOTS else "; scroll to hear each" if len(spots) > 6 else "")) if spots else ""
+            lines.append(f"Sound was lost {lost} time{'s' if lost != 1 else ''}{where} while recording "
+                         f"(the computer was too busy). Listen to {'each spot' if spots else 'the take'}; "
+                         "if it sounds cut, record again.")
+        if clipped:
+            lines.append(f"The mic clipped ({clipped:,} samples): parts may sound harsh. "
+                         "Turn the mic level down before the next take.")
+        self.check.setText("\n".join(lines))
+        self.check.setStyleSheet(f"color:{theme.RED}; font-weight:600;")
+        for t in spots:
+            btn = self._play_btn(t, t)
+            btn.setText(f"▶  {fmt_mmss(t)}")
+            self.lost_row.addWidget(btn)
+        self.lost_row.addStretch(1)
+        self.lost_strip.setVisible(bool(spots))
 
     # ------------------------------------------------------------------ tables
 
