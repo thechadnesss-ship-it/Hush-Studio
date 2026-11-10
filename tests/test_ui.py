@@ -272,3 +272,174 @@ def test_takes_dialog_lists_and_manages(app, tmp_path):
     assert any(t.name == "Alpha (copy)" for t in lib.list())
     dlg.search.setText("")
     assert dlg.table.rowCount() == 3
+
+
+# ----------------------------------------------------------------- T12: waveform editor
+
+def _hash(p):
+    import hashlib
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+def _wait_job(app, d, timeout=120):
+    end = time.perf_counter() + timeout
+    while d._job is not None and time.perf_counter() < end:
+        app.processEvents()
+        time.sleep(0.02)
+    assert d._job is None, "editor job did not finish"
+
+
+def _drag(view, a_s, b_s):
+    from PyQt6.QtCore import QPoint
+    from PyQt6.QtTest import QTest
+    y = view.height() // 2
+    xa, xb = int(view.x_of(a_s)), int(view.x_of(b_s))
+    QTest.mousePress(view, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, QPoint(xa, y))
+    QTest.mouseMove(view, QPoint((xa + xb) // 2, y))
+    QTest.mouseMove(view, QPoint(xb, y))
+    QTest.mouseRelease(view, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, QPoint(xb, y))
+
+
+from PyQt6.QtCore import Qt  # noqa: E402
+
+
+def test_editor_hand_edits_undo_automatic_tools_and_raw_untouched(app, tmp_path, monkeypatch):
+    """Open a take, cut / silence / undo by hand, run the automatic tools on part of the take and
+    on all of it, export for Audacity: edits.json follows along, raw.flac and clean.wav never change."""
+    import soundfile as sf
+    from ui.editor import EditorDialog
+    x, _ = speech_take(150.0, -24, seed=21)
+    raw = (x + plane(150.0, t_peak=100.0, peak_db=-30)).astype(np.float32)
+    take = tmp_path / "take"
+    take.mkdir()
+    sf.write(take / "raw.flac", raw, SR, format="FLAC", subtype="PCM_24")
+    sf.write(take / "clean.wav", x, SR, subtype="FLOAT")
+    h_raw, h_clean = _hash(take / "raw.flac"), _hash(take / "clean.wav")
+    edl = EditList(duration=150.0, sample_rate=SR, cuts=[Cut(20.0, 22.0, "flub", keep=True, proposed=True)])
+    d = EditorDialog(take, edl, x)
+    d.resize(1240, 760)
+    d.show()
+    pump(app, 0.3)
+    v = d.view
+    assert v.spp * v.width() >= 150.0                      # opens showing the whole take
+    assert d.btn_next.isVisible() and "(1)" in d.btn_next.text()
+    SHOTS.mkdir(exist_ok=True)
+    d.grab().save(str(SHOTS / "ui_editor.png"))
+
+    # select by dragging, delete, undo, redo
+    _drag(v, 40.0, 45.0)
+    assert v.sel and abs(v.sel[0] - 40.0) < 0.5 and abs(v.sel[1] - 45.0) < 0.5
+    assert d.btn_delete.isEnabled()
+    a, b = v.sel
+    d.btn_delete.click()
+    assert edl.cuts[-1].reason == "manual" and abs(edl.cuts[-1].start - a) < 1e-3
+    assert edl.output_duration() == pytest.approx(150.0 - (b - a) - 0.01, abs=0.01)
+    pump(app, 0.6)
+    assert EditList.load(take / "edits.json").cuts[-1].reason == "manual"   # saved as she goes
+    d.btn_undo.click()
+    assert [c.reason for c in edl.cuts] == ["flub"]
+    d.btn_redo.click()
+    assert len(edl.cuts) == 2
+
+    # silence + insert silence + copy/paste + fade + marker, via the same handlers as the buttons
+    d.select(60.0, 62.0)
+    d.btn_silence.click()
+    assert edl.pauses and edl.pauses[-1].kind == "silence"
+    d.select(70.0, 71.0)
+    d.btn_copy.click()
+    d.move_cursor(90.0)
+    d.btn_paste.click()
+    assert len(edl.inserts) == 1
+    d.select(100.0, 104.0)
+    d.btn_fade_out.click()
+    d.move_cursor(110.0)
+    d.btn_marker.click()
+    assert len(edl.markers) == 1 and d.btn_markers.isEnabled()
+
+    # the flub proposal: jump to it and accept it
+    d.next_proposal()
+    flub = edl.cuts[0]
+    d.editor.decide_cut(flub.id, "accept")
+    d._after_edit(label="Cut accepted")
+    assert not flub.keep and not d.btn_next.isVisible()
+
+    # zoom down to single samples and back: every drawing path
+    d.view.show_range(30.0, 30.01)
+    v.repaint()
+    d.view.show_range(30.0, 31.0)
+    v.repaint()
+    d.view.fit()
+
+    # click-menus on a cut ▼ and a marker flag build without blocking; deleting everything is survivable
+    from PyQt6.QtWidgets import QMenu
+    shown = []
+    with monkeypatch.context() as mp:
+        mp.setattr(QMenu, "exec", lambda self, *a: shown.append([act.text() for act in self.actions()]))
+        d._item_clicked("cut", next(m for m in v._marks if m.active))
+        d._item_clicked("marker", v._markers[0])
+        d._context_menu(v.mapToGlobal(v.rect().center()))
+    assert any("Restore (keep this audio)" in t for t in shown[0]) and "Rename…" in shown[1] and "Silence" in shown[2]
+    d.select_all()
+    d.btn_delete.click()
+    v.repaint()
+    assert edl.output_duration() == 0
+    d.btn_undo.click()
+    assert edl.output_duration() > 100
+
+    # automatic tools: part of the take, then all of it
+    d.select(*[v.ed.tl.src_to_out(t * SR)[0] / SR for t in (60.0, 130.0)])
+    d.btn_planes.click()
+    _wait_job(app, d)
+    planes = [c for c in edl.cuts if c.reason == "plane"]
+    assert len(planes) == 1 and planes[0].start < 85 and planes[0].end > 115, d.status.text()
+    d.clear_selection()
+    n_locked = sum(p.locked for p in edl.pauses)
+    d.btn_auto.click()
+    _wait_job(app, d)
+    assert sum(not p.locked for p in edl.pauses) > 5 and sum(p.locked for p in edl.pauses) == n_locked
+    d.btn_norm.click()
+    _wait_job(app, d)
+    assert any(g.reason == "normalise" for g in edl.gains)
+    steps = len(d.editor._undo)
+    d.btn_undo.click()                                     # each automatic run is one undo step
+    assert not any(g.reason == "normalise" for g in edl.gains) and len(d.editor._undo) == steps - 1
+
+    # Open in Audacity: exports the edited take (Audacity itself may not be installed here)
+    import ui.editor as editor_mod
+    launched = []
+    monkeypatch.setattr(editor_mod, "find_audacity", lambda: "audacity.exe")
+    monkeypatch.setattr(editor_mod.subprocess, "Popen", lambda args: launched.append(args))
+    d.btn_aud_open.click()
+    _wait_job(app, d)
+    out, _ = sf.read(take / "for_audacity.wav", dtype="float32")
+    assert len(out) == pytest.approx(edl.output_duration() * SR, abs=2) and launched
+
+    # the result renders, and the recorded audio is exactly as it was
+    assert len(edl.render(x)) == pytest.approx(edl.output_duration() * SR, abs=2)
+    d.grab().save(str(SHOTS / "ui_editor_edited.png"))
+    d.reject()
+    assert EditList.load(take / "edits.json") == edl
+    assert _hash(take / "raw.flac") == h_raw and _hash(take / "clean.wav") == h_clean
+
+
+def test_review_edit_by_hand_opens_the_editor(app, tmp_path, monkeypatch):
+    import soundfile as sf
+    from ui import editor as editor_mod
+    from ui import review as review_mod
+    from ui.main_window import MainWindow
+    w = MainWindow()
+    take = tmp_path / "t"
+    take.mkdir()
+    clean = np.zeros(SR * 30, np.float32)
+    sf.write(take / "clean.wav", clean, SR, subtype="FLOAT")
+    edl = EditList(30.0, SR)
+    edl.save(take / "edits.json")
+    w.session = Session(take)
+    opened = []
+    monkeypatch.setattr(review_mod.ReviewDialog, "exec", lambda self: review_mod.ReviewDialog.EDIT)
+    monkeypatch.setattr(editor_mod.EditorDialog, "exec", lambda self: opened.append(self) or 0)
+    w._prepared(edl, clean)
+    assert len(opened) == 1 and w.mode == "done"
+    w.reopen_take(take, "review")                         # Takes → "Open in editor"
+    assert len(opened) == 2 and opened[1].editor.edl.duration == 30.0
+    w.close()

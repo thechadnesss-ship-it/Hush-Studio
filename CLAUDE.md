@@ -134,6 +134,23 @@ makes speaking hard → "Listen back (last 15 s)" while paused instead.
   `name`. Status derived from files: raw → edited (edits.json) → rendered (output_*h.mp4) → uploaded (take.json). Takes screen (header
   "Takes"): search, rename, duplicate (no rendered video), delete (confirmed), Show in Explorer, open in editor / render, export/import
   `.hushtake` zip. Older folders without take.json are listed too.
+- **Waveform editor (T12, D01, `core/editing.py`, `ui/editor.py`):** Audacity-style editing of the *edited* take (what
+  renders): zoom/scroll/overview, play from any point, select, cut/copy/paste/delete, silence, insert silence, fades,
+  markers, undo/redo, plus Auto-edit pauses / Remove plane noise / Normalise on the selection or the whole take, and an
+  Open in Audacity → Bring back round-trip (`for_audacity.wav` out; the file brought back is saved as `audacity_N.wav`
+  and `EditList.source` names it, edits start fresh, undoable). Ops take output time and become source-time entries:
+  `Cut(reason="manual", xfade_s=0.01)`, `Pause(kind="silence", locked)`, `Insert(at, clips)`, `Gain(db/fade, on=insert)`,
+  `Marker`. Old edits.json files load unchanged. `EditList.timeline()` is now the one sample-exact description of the
+  output (render, waveform, playback, output↔source mapping): matches the previous renderer to 1.5e-8 and renders
+  37 min in 0.4 s (was 1.6 s). Behaviour change: a pause partly covered by a cut is clipped and loses that much output
+  length (before: dropped, the rest of the gap played raw). Flub proposals show as amber regions (Accept / Undo), applied
+  cuts as ▼ at the join (Listen / Restore). Normalise: selection → loudness of the whole take (≤ ±12 dB, peak ≤ −1 dBFS);
+  whole take → −21 LUFS (what mastering does anyway, so the waveform shows the real level). Review → "Edit by hand…";
+  Takes → "Open in editor" opens it directly. Measured on her real raw take (33 min, 371 pauses, 91 markers): editor
+  opens in 0.4 s, a hand edit incl. redraw 21–43 ms, undo ~25 ms, whole-take redraw 15 ms (Qt `fillPath` was 130 ms →
+  one line per pixel); Auto-edit pauses 3–4 s, plane noise 4 s per 5 min selection / 17 s whole take, Normalise ~4 s
+  (worker thread). raw.flac / clean.wav byte-identical after a full session. Not done: `session.finish(clean=None)` still
+  reads clean.wav (the UI always passes the audio; session.py is in T3's zone).
 - **Live capture (`core/capture.py`):** callback only enqueues; full queue drops + counts (a
   simulated faster-than-real-time source uses backpressure instead). USB mic verified at 48 kHz.
 
