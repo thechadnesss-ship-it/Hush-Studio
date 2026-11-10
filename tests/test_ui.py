@@ -468,3 +468,33 @@ def test_review_edit_by_hand_opens_the_editor(app, tmp_path, monkeypatch):
     w.reopen_take(take, "review")                         # Takes → "Open in editor"
     assert len(opened) == 2 and opened[1].editor.edl.duration == 30.0
     w.close()
+
+
+def test_edit_button_after_a_take_then_finish_renders_the_edit(app, tmp_path, monkeypatch):
+    import soundfile as sf
+    from ui import review as review_mod
+    from ui import editor as editor_mod
+    from ui.main_window import MainWindow
+    w = MainWindow()
+    take = tmp_path / "t"
+    take.mkdir()
+    clean = np.zeros(SR * 30, np.float32)
+    sf.write(take / "clean.wav", clean, SR, subtype="FLOAT")
+    edl = EditList(30.0, SR)
+    edl.save(take / "edits.json")
+    w.session = Session(take)
+    assert not w.btn_edit.isVisibleTo(w)
+    monkeypatch.setattr(review_mod.ReviewDialog, "exec", lambda self: 0)        # dismiss the review
+    w._prepared(edl, clean)
+    assert w.mode == "done" and w.btn_edit.isVisibleTo(w) and w.btn_finish.isEnabled()
+
+    def fake_exec(self):                                                         # make a change in the editor
+        self.editor.edl.cuts.append(Cut(5.0, 10.0, reason="manual"))
+        return 0
+    monkeypatch.setattr(editor_mod.EditorDialog, "exec", fake_exec)
+    rendered = []
+    monkeypatch.setattr(w, "render", lambda: rendered.append([(c.start, c.end) for c in w.edl.cuts]))
+    w.btn_edit.click()
+    w.btn_finish.click()
+    assert rendered == [[(5.0, 10.0)]]
+    w.close()
