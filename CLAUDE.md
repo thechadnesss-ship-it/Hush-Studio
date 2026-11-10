@@ -151,6 +151,12 @@ makes speaking hard → "Listen back (last 15 s)" while paused instead.
   one line per pixel); Auto-edit pauses 3–4 s, plane noise 4 s per 5 min selection / 17 s whole take, Normalise ~4 s
   (worker thread). raw.flac / clean.wav byte-identical after a full session. Not done: `session.finish(clean=None)` still
   reads clean.wav (the UI always passes the audio; session.py is in T3's zone).
+  **Layout = Audacity's, in her colours** (2026-11-10: the first button-row version "doesn't feel enough like Audacity"
+  for Sam): menu bar File/Edit/Select/View/Transport/Generate/Effect, icon transport + edit/zoom toolbars and a
+  playback meter, track panel (Mute/Select, Waveform/Waveform (dB)), amplitude ruler (click = vertical zoom), clip bar,
+  peak + RMS waveform, label track for markers, timeline Quick-Play, selection toolbar with typed hh mm ss.sss boxes,
+  Audacity's shortcuts (Space, P, Shift+Space, Home/End, arrows, Ctrl+X/C/V/K/T/L/B/M/Z/Y/1/2/3/E/F/A). Icons are drawn
+  in code (not Audacity's art).
 - **Live capture (`core/capture.py`):** callback only enqueues; full queue drops + counts (a
   simulated faster-than-real-time source uses backpressure instead). USB mic verified at 48 kHz.
 

@@ -378,12 +378,15 @@ class Timeline:
 
     # ------------------------------------------------------------------ waveform
 
-    def block_peaks(self, src_min: np.ndarray, src_max: np.ndarray, block: int) -> tuple[np.ndarray, np.ndarray]:
-        """Per-block min/max of the output (blocks of `block` samples) from per-block source peaks.
+    def block_peaks(self, src_min: np.ndarray, src_max: np.ndarray, block: int,
+                    src_ms: np.ndarray | None = None):
+        """Per-block min/max of the output (blocks of `block` samples) from per-block source peaks;
+        with `src_ms` (per-block mean square) also the output's per-block mean square.
         Approximate to ±1 block at segment edges: it is for drawing, not for sound."""
         nb = -(-self.total // block) if self.total else 0
         omin = np.zeros(nb, dtype=np.float32)
         omax = np.zeros(nb, dtype=np.float32)
+        oms = np.zeros(nb, dtype=np.float32) if src_ms is not None else None
         ns = len(src_min)
         for s in self.vis:
             if s.kind != "audio" or s.n <= 0:
@@ -394,15 +397,20 @@ class Timeline:
             if cnt <= 0:
                 continue
             lo, hi = src_min[sb0:sb0 + cnt], src_max[sb0:sb0 + cnt]
+            ms = src_ms[sb0:sb0 + cnt] if oms is not None else None
             g = self._gain(s, 0, s.n)
             if g is not None:
                 if not np.isscalar(g):
                     idx = np.minimum((np.arange(cnt) * block + block // 2), s.n - 1)
                     g = g[idx]
                 lo, hi = lo * g, hi * g
+                if ms is not None:
+                    ms = ms * (g * g)
             np.minimum(omin[b0:b0 + cnt], lo, out=omin[b0:b0 + cnt])
             np.maximum(omax[b0:b0 + cnt], hi, out=omax[b0:b0 + cnt])
-        return omin, omax
+            if ms is not None:
+                np.maximum(oms[b0:b0 + cnt], ms, out=oms[b0:b0 + cnt])
+        return (omin, omax) if oms is None else (omin, omax, oms)
 
 
 # ===================================================================== the edit list

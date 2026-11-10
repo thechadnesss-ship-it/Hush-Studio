@@ -347,3 +347,23 @@ def test_edits_stay_fast_on_a_40_min_take():
     for _ in range(10):
         ed.undo()
     assert (time.perf_counter() - t0) / 10 < 0.15
+
+
+def test_trim_keeps_only_the_selection():
+    ed, x = editor(20.0)
+    ed.trim(5.0, 8.0)
+    y = ed.render()
+    assert len(y) / SR == pytest.approx(3.0, abs=2 / SR)
+    assert y[int(1.5 * SR)] == pytest.approx(6.5 / 100, abs=1e-5)
+    assert ed.undo() == "Trim audio" and ed.duration == 20.0
+
+
+def test_block_rms_for_the_waveform():
+    ed, x = editor(10.0, pauses=[Pause(4.0, 5.0, 3.0)])
+    B = 256
+    n = len(x) // B * B
+    r = x[:n].reshape(-1, B)
+    lo, hi, ms = ed.tl.block_peaks(r.min(1), r.max(1), B, (r.astype(np.float64) ** 2).mean(1).astype(np.float32))
+    assert len(ms) == len(lo) and ms.max() == pytest.approx(hi.max() ** 2, rel=0.02)
+    mid = int(ed.tl.src_to_out(4.5 * SR)[0]) // B
+    assert ms[mid] == 0 and hi[mid] == 0                    # the shaped pause is digital silence

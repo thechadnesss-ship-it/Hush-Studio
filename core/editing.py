@@ -249,6 +249,16 @@ class Editor:
         with self.change("Cut"):
             self._delete(a, b)
 
+    def trim(self, a: float, b: float) -> None:
+        """Keep only [a, b) (Audacity's Trim Audio): everything before and after goes."""
+        with self.change("Trim audio"):
+            end = self.duration
+            if b < end:
+                self._delete(b, end)
+                self._rebuild()
+            if a > 0:
+                self._delete(0.0, a)
+
     def copy(self, a: float, b: float) -> None:
         sr = self.sr
         clips = []

@@ -321,47 +321,72 @@ def test_editor_hand_edits_undo_automatic_tools_and_raw_untouched(app, tmp_path,
     d.show()
     pump(app, 0.3)
     v = d.view
-    assert v.spp * v.width() >= 150.0                      # opens showing the whole take
-    assert d.btn_next.isVisible() and "(1)" in d.btn_next.text()
+    assert v.spp * v.wave_w >= 150.0                      # opens showing the whole take
+    assert d.act_next.isVisible() and "(1)" in d.act_next.text()
     SHOTS.mkdir(exist_ok=True)
     d.grab().save(str(SHOTS / "ui_editor.png"))
 
     # select by dragging, delete, undo, redo
     _drag(v, 40.0, 45.0)
     assert v.sel and abs(v.sel[0] - 40.0) < 0.5 and abs(v.sel[1] - 45.0) < 0.5
-    assert d.btn_delete.isEnabled()
+    assert d.act_delete.isEnabled()
     a, b = v.sel
-    d.btn_delete.click()
+    d.act_delete.trigger()
     assert edl.cuts[-1].reason == "manual" and abs(edl.cuts[-1].start - a) < 1e-3
     assert edl.output_duration() == pytest.approx(150.0 - (b - a) - 0.01, abs=0.01)
     pump(app, 0.6)
     assert EditList.load(take / "edits.json").cuts[-1].reason == "manual"   # saved as she goes
-    d.btn_undo.click()
+    d.act_undo.trigger()
     assert [c.reason for c in edl.cuts] == ["flub"]
-    d.btn_redo.click()
+    d.act_redo.trigger()
     assert len(edl.cuts) == 2
 
     # silence + insert silence + copy/paste + fade + marker, via the same handlers as the buttons
     d.select(60.0, 62.0)
-    d.btn_silence.click()
+    d.act_silence.trigger()
     assert edl.pauses and edl.pauses[-1].kind == "silence"
     d.select(70.0, 71.0)
-    d.btn_copy.click()
+    d.act_copy.trigger()
     d.move_cursor(90.0)
-    d.btn_paste.click()
+    d.act_paste.trigger()
     assert len(edl.inserts) == 1
     d.select(100.0, 104.0)
-    d.btn_fade_out.click()
+    d.act_fade_out.trigger()
     d.move_cursor(110.0)
-    d.btn_marker.click()
-    assert len(edl.markers) == 1 and d.btn_markers.isEnabled()
+    d.act_label_sel.trigger()
+    assert len(edl.markers) == 1 and d.goto_menu.isEnabled()
 
     # the flub proposal: jump to it and accept it
     d.next_proposal()
     flub = edl.cuts[0]
     d.editor.decide_cut(flub.id, "accept")
     d._after_edit(label="Cut accepted")
-    assert not flub.keep and not d.btn_next.isVisible()
+    assert not flub.keep and not d.act_next.isVisible()
+
+    # Audacity bits: typed selection times, Trim, dB view, vertical zoom, quick-play from the timeline
+    d.sel_mode.setCurrentIndex(1)                          # Start and Length
+    d.f_start.set_seconds(30.0)
+    d.f_end.set_seconds(2.5)
+    d._sel_typed()
+    assert v.sel == pytest.approx((30.0, 32.5))
+    d.sel_mode.setCurrentIndex(0)
+    assert d.f_end.seconds() == pytest.approx(32.5, abs=1e-3)
+    before = edl.output_duration()
+    d.act_trim.trigger()
+    assert edl.output_duration() == pytest.approx(2.5, abs=0.05)
+    d.act_undo.trigger()
+    assert edl.output_duration() == pytest.approx(before, abs=1e-6)
+    d.act_db.trigger()
+    v.repaint()
+    assert v.db_view and d.act_db.isChecked()
+    d.act_linear.trigger()
+    v._vzoom(0.5)
+    v.reset_vzoom()
+    d.quick_play(10.0)                                     # no sound device needed for this to be safe
+    d.stop_play()
+    d.nudge(1)
+    d.nudge(1, extend=True)
+    assert v.sel is not None
 
     # zoom down to single samples and back: every drawing path
     d.view.show_range(30.0, 30.01)
@@ -378,30 +403,30 @@ def test_editor_hand_edits_undo_automatic_tools_and_raw_untouched(app, tmp_path,
         d._item_clicked("cut", next(m for m in v._marks if m.active))
         d._item_clicked("marker", v._markers[0])
         d._context_menu(v.mapToGlobal(v.rect().center()))
-    assert any("Restore (keep this audio)" in t for t in shown[0]) and "Rename…" in shown[1] and "Silence" in shown[2]
+    assert any("Restore (keep this audio)" in t for t in shown[0]) and "Rename…" in shown[1] and any("Silence" in x for x in shown[2])
     d.select_all()
-    d.btn_delete.click()
+    d.act_delete.trigger()
     v.repaint()
     assert edl.output_duration() == 0
-    d.btn_undo.click()
+    d.act_undo.trigger()
     assert edl.output_duration() > 100
 
     # automatic tools: part of the take, then all of it
     d.select(*[v.ed.tl.src_to_out(t * SR)[0] / SR for t in (60.0, 130.0)])
-    d.btn_planes.click()
+    d.act_planes.trigger()
     _wait_job(app, d)
     planes = [c for c in edl.cuts if c.reason == "plane"]
     assert len(planes) == 1 and planes[0].start < 85 and planes[0].end > 115, d.status.text()
     d.clear_selection()
     n_locked = sum(p.locked for p in edl.pauses)
-    d.btn_auto.click()
+    d.act_auto.trigger()
     _wait_job(app, d)
     assert sum(not p.locked for p in edl.pauses) > 5 and sum(p.locked for p in edl.pauses) == n_locked
-    d.btn_norm.click()
+    d.act_norm.trigger()
     _wait_job(app, d)
     assert any(g.reason == "normalise" for g in edl.gains)
     steps = len(d.editor._undo)
-    d.btn_undo.click()                                     # each automatic run is one undo step
+    d.act_undo.trigger()                                     # each automatic run is one undo step
     assert not any(g.reason == "normalise" for g in edl.gains) and len(d.editor._undo) == steps - 1
 
     # Open in Audacity: exports the edited take (Audacity itself may not be installed here)
@@ -409,7 +434,7 @@ def test_editor_hand_edits_undo_automatic_tools_and_raw_untouched(app, tmp_path,
     launched = []
     monkeypatch.setattr(editor_mod, "find_audacity", lambda: "audacity.exe")
     monkeypatch.setattr(editor_mod.subprocess, "Popen", lambda args: launched.append(args))
-    d.btn_aud_open.click()
+    d.act_aud_open.trigger()
     _wait_job(app, d)
     out, _ = sf.read(take / "for_audacity.wav", dtype="float32")
     assert len(out) == pytest.approx(edl.output_duration() * SR, abs=2) and launched
