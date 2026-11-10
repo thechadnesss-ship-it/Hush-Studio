@@ -15,6 +15,9 @@ from typing import Sequence
 from . import ffmpeg_tools as ff
 from . import mp4_stitch
 from .config import FIT_POLICIES, RenderConfig
+from .log_setup import get_logger
+
+log = get_logger("render")
 
 MIN_TAKE_EXTRA_S = 10.0       # take must be > 2 × seam fade + this
 SHORT_TAKE_WARN_S = 120.0     # below this, repeats get noticeable
@@ -341,6 +344,7 @@ def render(
     encoded fade-out tail) → mux. `tail_source` defaults to `session`."""
     plan = plan_from_files(cfg, session, intro, black_loop, intro_video)
     out_path = Path(out_path)
+    log.info("render start: %s -> %s", plan.summary(), out_path.name)
     tail, pieces = None, None
     if plan.tail_s:
         if silence is not None:
@@ -349,6 +353,7 @@ def render(
             tail = build_tail(Path(tail_source or session), plan.tail_s, out_path.parent / "tail.m4a", cfg)
     mux(plan, cfg, intro=intro, session=session, black_loop=black_loop, out_path=out_path,
         intro_video=intro_video, tail=tail, tail_pieces=pieces, on_progress=on_progress, cancel=cancel)
+    log.info("render done: %s", out_path.name)
     return plan, out_path
 
 

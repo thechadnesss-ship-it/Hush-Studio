@@ -346,4 +346,13 @@ def _explain(r) -> str:
 
 def upload(path: Path, meta: VideoMeta, on_progress: ProgressFn | None = None,
            cancel: threading.Event | None = None, session=None) -> UploadResult:
-    return ResumableUpload(session or authorized_session(), path, meta).run(on_progress, cancel)
+    from .log_setup import get_logger
+    log = get_logger("upload")
+    log.info("upload start: %s (%s bytes)", path.name, path.stat().st_size)
+    try:
+        res = ResumableUpload(session or authorized_session(), path, meta).run(on_progress, cancel)
+    except Exception:
+        log.exception("upload failed: %s", path.name)
+        raise
+    log.info("upload done: %s", path.name)
+    return res
