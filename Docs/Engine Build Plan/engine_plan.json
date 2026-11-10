@@ -1,0 +1,243 @@
+{
+  "meta": {
+    "title": "Hush Studio Build Plan",
+    "subtitle": "Hush Studio: the recording and render app for the Sam Katz Hypnosis channel. Migrated 2026-11-10 from ops/state.json.",
+    "owners": {
+      "Claude": "Core pipeline, UI, docs, tests",
+      "Codex": "Auto-edit, DSP, verification runs",
+      "User": "Decisions, real-account tests, content, approvals",
+      "Either": "Unassigned. Claim before starting."
+    }
+  },
+  "guide": [
+    {
+      "heading": "What this is",
+      "rows": [
+        ["Purpose", "Task plan for Hush Studio (sound recording app, repo folder pika_meditate). Narthen Control reads and edits this file."],
+        ["Architecture", "CLAUDE.md is the architectural source of truth. Render speed is the #1 requirement: encode each unique piece once, build the long video by stream-copy."],
+        ["Source of truth", "Docs/Engine Build Plan/engine_plan.json (path kept from Narthen Control's defaults). The workbook is generated from it; never edit the .xlsx directly."]
+      ]
+    }
+  ],
+  "milestones": [
+    {
+      "id": "M1",
+      "name": "Verify and publish",
+      "goal": "Prove the shipped pipeline on real material and publish to the real channel account.",
+      "exit": "Full pytest green, FINISH timing on Sam's real take recorded, a real YouTube upload tested."
+    },
+    {
+      "id": "M2",
+      "name": "Editing workflow",
+      "goal": "Sam can review and adjust everything the auto-editor proposes before render.",
+      "exit": "Flub-cut proposals reviewable (accept/undo); induction-phase marker pauses handled."
+    },
+    {
+      "id": "M3",
+      "name": "Later scope",
+      "goal": "Features deferred until the recording workflow is solid.",
+      "exit": "Pulled forward only when requested."
+    }
+  ],
+  "zones": [
+    {
+      "id": "Z-CORE",
+      "name": "Core pipeline",
+      "owner": "Either",
+      "paths": "core/, config/, tests/ (non-UI)",
+      "rules": "Any change that re-encodes the full-length output needs explicit sign-off (see CLAUDE.md)."
+    },
+    {
+      "id": "Z-UI",
+      "name": "UI and companion",
+      "owner": "Claude",
+      "paths": "main.py, ui/, assets/",
+      "rules": "PyQt6; never touch widgets off the GUI thread. Brand: samkatz.store white and purple."
+    },
+    {
+      "id": "Z-DOCS",
+      "name": "Docs and plan",
+      "owner": "Either",
+      "paths": "CLAUDE.md, AGENTS.md, Docs/",
+      "rules": "Small edits; append to the log."
+    }
+  ],
+  "decisions": [],
+  "audit": [],
+  "baseline": [
+    ["pytest", "PASS 171", "As recorded in CLAUDE.md section 0.6 (2026-11-09). Re-run under T6."]
+  ],
+  "legacy": [],
+  "budget": {
+    "plans": "Claude and Codex subscription plans. Caps come from ops/state.json: 90% weekly, 95% five-hour.",
+    "split": [
+      ["Hush Studio", "100%", "100%", "Single project for now."]
+    ],
+    "tiers": [
+      ["Light", "Sonnet, low effort", "Low effort", "Docs, plan updates, small fixes"],
+      ["Standard", "Sonnet, medium effort", "Medium effort", "Normal features and tests"],
+      ["Deep", "Opus, high effort, design only", "High effort", "Risky DSP or pipeline changes"],
+      ["User", "-", "-", "Decisions and real-account tests that are yours"]
+    ],
+    "rules": [
+      ["One task, one session", "Start each task fresh and paste `build_engine_plan.py --show <ID>`."],
+      ["Point at files", "Name the Key files from the task instead of asking an agent to explore."],
+      ["Pause, don't push through", "Near a usage limit, stop at a clean point and leave notes."]
+    ],
+    "usage": []
+  },
+  "log": [
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": ["T1", "T2", "T3", "T4", "T5", "T6"],
+      "text": "Migrated the six tasks from ops/state.json into Narthen Control's plan format. Task IDs unchanged."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "milestone": "M1",
+      "workstream": "Publish",
+      "title": "Test YouTube upload with Sam's real Google account (private-lock limitation shown)",
+      "priority": "P0",
+      "size": "S",
+      "owner": "User",
+      "status": "To do",
+      "depends": [],
+      "zone": "Z-CORE",
+      "files": "core/youtube_publisher.py",
+      "why": "The uploader is only tested against a fake server. Unverified API projects are locked to private; the app must show that plainly.",
+      "scope": "Sam signs in with the channel's Google account and uploads a short test video. Confirm resumable upload, metadata from youtube_template.toml, and the private-lock notice.",
+      "acceptance": "A test video appears in YouTube Studio with the expected title, tags and description, and the app shows the private-lock message.",
+      "verify": "Manual: upload in the app, check YouTube Studio.",
+      "branch": "",
+      "notes": "",
+      "legacy": "",
+      "findings": [],
+      "decisions": [],
+      "resolves": [],
+      "tier": "User"
+    },
+    {
+      "id": "T2",
+      "milestone": "M1",
+      "workstream": "Docs",
+      "title": "Update CLAUDE.md Module C to match shipped mastering (-21 LUFS, light chain)",
+      "priority": "P2",
+      "size": "S",
+      "owner": "Claude",
+      "status": "To do",
+      "depends": [],
+      "zone": "Z-DOCS",
+      "files": "CLAUDE.md, core/master.py",
+      "why": "Module C still describes -14 LUFS and an HPF/compressor chain; the shipped chain targets -21 LUFS with gain plus limiter.",
+      "scope": "Rewrite Module C to match core/master.py.",
+      "acceptance": "Module C describes the shipped chain and -21 LUFS; no contradiction with section 0.5.",
+      "verify": "Read Module C against core/master.py.",
+      "branch": "",
+      "notes": "",
+      "legacy": "",
+      "findings": [],
+      "decisions": [],
+      "resolves": [],
+      "tier": "Light"
+    },
+    {
+      "id": "T3",
+      "milestone": "M2",
+      "workstream": "Auto-edit",
+      "title": "Auto-edit: handle shorter induction-phase marker pauses",
+      "priority": "P1",
+      "size": "M",
+      "owner": "Codex",
+      "status": "To do",
+      "depends": [],
+      "zone": "Z-CORE",
+      "files": "core/auto_edit.py, tests/",
+      "why": "Sam's occasional shorter marker pauses in the induction phase are not automated yet.",
+      "scope": "Detect and shape the shorter induction-phase marker pauses in core/auto_edit.py, keeping the existing behaviour for normal markers.",
+      "acceptance": "On Sam's real raw take, induction-phase markers are replaced with the shorter pause lengths; existing auto-edit tests still pass.",
+      "verify": "pytest tests -k auto_edit",
+      "branch": "",
+      "notes": "",
+      "legacy": "",
+      "findings": [],
+      "decisions": [],
+      "resolves": [],
+      "tier": "Standard"
+    },
+    {
+      "id": "T4",
+      "milestone": "M2",
+      "workstream": "Review UI",
+      "title": "Review UI: flub-cut proposals Sam can accept/undo before render",
+      "priority": "P1",
+      "size": "L",
+      "owner": "Claude",
+      "status": "To do",
+      "depends": [],
+      "zone": "Z-UI",
+      "files": "ui/, core/edit_list.py, core/auto_edit.py",
+      "why": "Sam does flub cuts herself in review; the app should propose them and let her accept or undo each.",
+      "scope": "Show proposed cuts in the review screen with preview, accept and undo, feeding the edit list before render.",
+      "acceptance": "Each proposed cut can be previewed, accepted or undone, and the render honours the result.",
+      "verify": "pytest tests/test_ui.py; manual review pass on a real take.",
+      "branch": "",
+      "notes": "",
+      "legacy": "",
+      "findings": [],
+      "decisions": [],
+      "resolves": [],
+      "tier": "Standard"
+    },
+    {
+      "id": "T5",
+      "milestone": "M3",
+      "workstream": "Later",
+      "title": "Repurpose feature: rearrange old audio into a new session (deferred scope)",
+      "priority": "P2",
+      "size": "XL",
+      "owner": "Either",
+      "status": "To do",
+      "depends": [],
+      "zone": "Z-CORE",
+      "files": "core/",
+      "why": "Sam sometimes reuses or rearranges old audio into a new session. Deferred until new-recording workflow is solid.",
+      "scope": "To be scoped with Sam before any work starts.",
+      "acceptance": "To be defined when scoped.",
+      "verify": "To be defined when scoped.",
+      "branch": "",
+      "notes": "",
+      "legacy": "",
+      "findings": [],
+      "decisions": [],
+      "resolves": [],
+      "tier": "Deep"
+    },
+    {
+      "id": "T6",
+      "milestone": "M1",
+      "workstream": "Verification",
+      "title": "Run full pytest + end-to-end FINISH timing on Sam's real take; record in CLAUDE.md 0.6",
+      "priority": "P1",
+      "size": "S",
+      "owner": "Codex",
+      "status": "To do",
+      "depends": [],
+      "zone": "Z-CORE",
+      "files": "tests/, CLAUDE.md",
+      "why": "Section 0.6 records numbers from 2026-11-09; they should be re-measured after recent changes.",
+      "scope": "Run the full test suite and a real-take FINISH to exactly 8 h; record timings in CLAUDE.md section 0.6.",
+      "acceptance": "pytest green; FINISH timing and exact 8h 00m 00s result recorded in CLAUDE.md 0.6.",
+      "verify": "pytest; python main.py FINISH on the real take.",
+      "branch": "",
+      "notes": "",
+      "legacy": "",
+      "findings": [],
+      "decisions": [],
+      "resolves": [],
+      "tier": "Light"
+    }
+  ]
+}
