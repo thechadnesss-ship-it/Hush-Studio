@@ -95,9 +95,12 @@ class ReviewDialog(QDialog):
     # ------------------------------------------------------------------ recording check
 
     def _show_capture(self, cap: dict) -> None:
-        lost = int(cap.get("input_overflows", 0)) + int(cap.get("dropped_blocks", 0))
-        clipped = int(cap.get("clipped_samples", 0))
         spots = list(cap.get("lost_at_s", []))
+        raw_lost = int(cap.get("input_overflows", 0)) + int(cap.get("dropped_blocks", 0))
+        # T8 reports coalesced loss spots (one per 0.5 s), so this is the count
+        # the listener can actually review. Fall back for older capture.json files.
+        lost = len(spots) if spots else raw_lost
+        clipped = int(cap.get("clipped_samples", 0))
         self.lost_count, self.clipped_count = lost, clipped
         if not lost and not clipped:
             self.check.setText("Recording check: no lost sound, no clipping.")

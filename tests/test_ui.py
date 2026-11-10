@@ -203,7 +203,7 @@ def test_review_shows_lost_sound_before_render(app):
     dlg = _review(cap)
     dlg.show()
     pump(app, 0.1)
-    assert not dlg.check.isHidden() and "lost 3 times" in dlg.check.text()
+    assert not dlg.check.isHidden() and "lost 2 times" in dlg.check.text()
     spots = [dlg.lost_row.itemAt(i).widget() for i in range(dlg.lost_row.count())]
     assert [b.text() for b in spots if isinstance(b, QPushButton)] == ["▶  0:12", "▶  0:40"]
     SHOTS.mkdir(exist_ok=True)
