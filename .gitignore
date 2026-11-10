@@ -23,3 +23,6 @@ ops/*.tmp
 ops/usage_cache.json
 ops/state.json
 ops/claude_usage.json
+
+# Narthen Control generated files
+outputs/
