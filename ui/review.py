@@ -34,9 +34,11 @@ def play(x: np.ndarray) -> None:
 
 
 class ReviewDialog(QDialog):
+    EDIT = 2                      # exec() result: open the waveform editor
+
     def __init__(self, edl: EditList, clean: np.ndarray, parent=None, capture: dict | None = None,
                  source: np.ndarray | None = None, quality: QualityReport | None = None,
-                 imported: bool = False):
+                 imported: bool = False, quality_unavailable: bool = False):
         super().__init__(parent)
         self.setWindowTitle("Review edits")
         self.resize(760, 620)
@@ -55,9 +57,11 @@ class ReviewDialog(QDialog):
         lay.addWidget(self.check)
         self.quality_check = QLabel()
         self.quality_check.setWordWrap(True)
-        self.quality_check.setVisible(source is not None or quality is not None)
+        self.quality_check.setVisible(source is not None or quality is not None or quality_unavailable)
         lay.addWidget(self.quality_check)
         self._quality_worker = None
+        if quality_unavailable and source is None and quality is None:
+            self._show_quality(None)
         self.dropout_row = QHBoxLayout()
         self.dropout_row.setContentsMargins(0, 0, 0, 0)
         self.dropout_strip = QScrollArea()
@@ -122,6 +126,10 @@ class ReviewDialog(QDialog):
         self.polish = QCheckBox("Studio polish: warmth, softer “s” sounds, gentle evening-out (keeps her style)")
         lay.addWidget(self.polish)
         btns = QHBoxLayout()
+        hand = QPushButton("Edit by hand…")
+        hand.setToolTip("Open the waveform editor: cut, silence, paste, fades, markers, and the automatic tools")
+        hand.clicked.connect(lambda: self.done(self.EDIT))
+        btns.addWidget(hand)
         btns.addStretch(1)
         cancel = QPushButton("Back")
         cancel.clicked.connect(self.reject)
@@ -152,7 +160,7 @@ class ReviewDialog(QDialog):
             self.quality_check.setStyleSheet(f"color:{theme.RED}; font-weight:600;")
         if report.dropouts:
             for t in report.dropouts:
-                btn = self._play_btn(t, t + 0.06)
+                btn = self._play_btn(t, t + 0.06, context_s=0.5)
                 btn.setText(f"▶  {fmt_mmss(t)}")
                 self.dropout_row.addWidget(btn)
             self.dropout_row.addStretch(1)
@@ -189,17 +197,24 @@ class ReviewDialog(QDialog):
         self.lost_row.addStretch(1)
         self.lost_strip.setVisible(bool(spots))
 
-    def _wait_quality_worker(self):
+    def _detach_quality_worker(self):
+        """Let a long advisory check finish without ever blocking the GUI thread."""
         worker = self._quality_worker
         if worker is not None and worker.isRunning():
-            worker.wait()
+            try:
+                worker.done.disconnect(self._show_quality)
+            except (TypeError, RuntimeError):
+                pass
+            worker.setParent(None)
+            worker.finished.connect(worker.deleteLater)
+        self._quality_worker = None
 
     def done(self, result: int) -> None:
-        self._wait_quality_worker()
+        self._detach_quality_worker()
         super().done(result)
 
     def closeEvent(self, event):
-        self._wait_quality_worker()
+        self._detach_quality_worker()
         super().closeEvent(event)
 
     # ------------------------------------------------------------------ tables
@@ -247,10 +262,10 @@ class ReviewDialog(QDialog):
         c.accept() if accept else c.undo()
         self._fill()
 
-    def _play_btn(self, a: float, b: float) -> QPushButton:
+    def _play_btn(self, a: float, b: float, *, context_s: float = 2.0) -> QPushButton:
         btn = QPushButton("▶  Listen")
         btn.setObjectName("link")
-        lo, hi = max(0, int((a - 2) * SR)), min(len(self.clean), int((b + 2) * SR))
+        lo, hi = max(0, int((a - context_s) * SR)), min(len(self.clean), int((b + context_s) * SR))
         btn.clicked.connect(lambda: play(self.clean[lo:hi]))
         return btn
 

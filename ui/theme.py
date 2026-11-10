@@ -63,6 +63,7 @@ QPushButton:disabled {{ color: #C4BCCB; border-color: #F0EBF3; }}
 QPushButton#primary {{ background: {ACCENT}; color: white; border: none; }}
 QPushButton#primary:hover {{ background: {ACCENT_HOVER}; color: white; }}
 QPushButton#primary:disabled {{ background: {LILAC}; color: white; }}
+QPushButton#tool {{ min-height: 32px; max-height: 32px; border-radius: 16px; padding: 0px 14px; }}
 QPushButton#link {{ border: none; color: {ACCENT}; padding: 0px 6px; background: transparent; min-height: 24px; }}
 QPushButton#link:hover {{ text-decoration: underline; }}
 QComboBox, QDoubleSpinBox, QSpinBox, QLineEdit {{ background: {BG}; border: 1px solid {BORDER};

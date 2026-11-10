@@ -46,6 +46,13 @@ def test_single_full_scale_sample_is_not_called_clipping():
     assert analyze(x, x).clipped_samples == 0
 
 
+def test_below_full_scale_flat_top_is_still_clipping():
+    x, _ = speech_take(2.0, -24, seed=408)
+    # An analogue/input ceiling can flatten a run below digital full scale.
+    x[SR // 2:SR // 2 + 12] = 0.72
+    assert analyze(x, x).clipped_samples > 0
+
+
 def test_realistic_denoise_noise_removal_does_not_fail():
     clean, _ = speech_take(8.0, -24, seed=405)
     noise = np.random.default_rng(405).normal(0, 10 ** (-32 / 20), len(clean)).astype(np.float32)
@@ -53,11 +60,13 @@ def test_realistic_denoise_noise_removal_does_not_fail():
     assert report.passed
 
 
-def test_true_peak_is_not_reconstructed_for_advisory_check(monkeypatch):
+def test_true_peak_is_reconstructed_for_advisory_check(monkeypatch):
     x, _ = speech_take(2.0, -24, seed=407)
-    monkeypatch.setattr("core.audio_quality.true_peak", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError()))
+    seen = []
+    monkeypatch.setattr("core.audio_quality.true_peak", lambda *args, **kwargs: seen.append(True) or -24.0)
     report = analyze(x, x, warn_true_peak=False)
     assert report.passed
+    assert seen
 
 
 def test_dropout_spots_are_merged_and_capped():

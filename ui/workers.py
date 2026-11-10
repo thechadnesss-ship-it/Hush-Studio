@@ -21,7 +21,7 @@ class PrepareWorker(QThread):
     """Imported file: import → noise removal → edits. Recorded take: edits only (the live ear
     already heard the planes and noise removal ran during the take)."""
     stage = pyqtSignal(str)
-    done = pyqtSignal(object, object, object)     # EditList, clean ndarray, QualityReport
+    done = pyqtSignal(object, object, object)     # EditList, clean ndarray, raw source (or None)
     failed = pyqtSignal(str)
 
     def __init__(self, session: Session, import_src: Path | None = None, recording=None,
@@ -47,17 +47,14 @@ class PrepareWorker(QThread):
                 self.stage.emit("Finding pauses…")
                 edl = prepare(self.session, None, clean, ear_events=rec.ear_events,
                               render_cfg=self.cfg)
-            # Quality is advisory: a missing/corrupt source must not prevent review.
-            try:
-                if raw is None:
-                    raw, _ = sf.read(self.session.raw, dtype="float32", always_2d=False)
-                    if raw.ndim > 1:
-                        raw = raw.mean(axis=1)
-                quality = analyze(raw, clean, warn_true_peak=False)
-            except Exception:
-                quality = None
             self.stage.emit(f"Ready to review ({time.perf_counter() - t0:.0f}s)")
-            self.done.emit(edl, clean, quality)
+            # The potentially long source-vs-clean check belongs to the review worker,
+            # not on the speed-critical prepare path.  Keep the source as an ndarray for
+            # imports and a path for recordings so ReviewDialog can load it off-thread.
+            # Audacity round-trips are a new source timeline; comparing raw.flac
+            # against them would manufacture gaps and distortion warnings.
+            source = (raw if raw is not None else self.session.raw) if edl.source == "clean.wav" else None
+            self.done.emit(edl, clean, source)
         except Exception:
             self.failed.emit(traceback.format_exc())
 
@@ -77,6 +74,8 @@ class AudioQualityWorker(QThread):
                 source, _ = sf.read(source, dtype="float32", always_2d=False)
                 if source.ndim > 1:
                     source = source.mean(axis=1)
+            # Mastering re-gains and limits later, so pre-mastering true-peak
+            # headroom is informational here, not a reason to reject a take.
             self.done.emit(analyze(source, self.processed, warn_true_peak=False))
         except Exception:
             self.done.emit(None)

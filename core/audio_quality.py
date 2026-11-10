@@ -22,6 +22,7 @@ class QualityReport:
     distortion_db: float
     dropouts: list[float] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    dropout_count: int = 0
 
     @property
     def passed(self) -> bool:
@@ -30,7 +31,8 @@ class QualityReport:
     def as_dict(self) -> dict:
         return {"clipped_samples": self.clipped_samples, "peak_dbfs": self.peak_dbfs,
                 "true_peak_dbfs": self.true_peak_dbfs, "distortion_db": self.distortion_db,
-                "dropouts": self.dropouts, "warnings": self.warnings, "passed": self.passed}
+                "dropouts": self.dropouts, "dropout_count": self.dropout_count,
+                "warnings": self.warnings, "passed": self.passed}
 
 
 def _db(value: float) -> float:
@@ -63,7 +65,7 @@ def _active(x: np.ndarray, frame: int = 960) -> np.ndarray:
     n = len(x) // frame
     if n == 0:
         return np.ones(len(x), dtype=bool)
-    rms = np.sqrt(np.mean(x[:n * frame].reshape(n, frame).astype(np.float64) ** 2, axis=1))
+    rms = np.sqrt(np.mean(x[:n * frame].reshape(n, frame) ** 2, axis=1, dtype=np.float32))
     # Do not classify very quiet room tone as speech merely because the take is
     # mostly silent.  The old -70 dBFS floor made low-level noise look active.
     floor = max(10 ** (-60 / 20), float(np.percentile(rms, 20)) * 3.0)
@@ -72,7 +74,7 @@ def _active(x: np.ndarray, frame: int = 960) -> np.ndarray:
 
 
 def dropout_times(source: np.ndarray, processed: np.ndarray, sr: int = SR,
-                  max_spots: int = 200) -> list[float]:
+                  max_spots: int | None = 200) -> list[float]:
     """Find 5--60 ms processed gaps where the source still contains sound."""
     n = min(len(source), len(processed))
     if n == 0:
@@ -92,7 +94,7 @@ def dropout_times(source: np.ndarray, processed: np.ndarray, sr: int = SR,
     for t in result:
         if not merged or t - merged[-1] > 0.5:
             merged.append(t)
-    return merged[:max_spots]
+    return merged if max_spots is None else merged[:max_spots]
 
 
 def analyze(source: np.ndarray, processed: np.ndarray, sr: int = SR,
@@ -102,35 +104,51 @@ def analyze(source: np.ndarray, processed: np.ndarray, sr: int = SR,
     source = np.asarray(source, dtype=np.float32).reshape(-1)
     processed = np.asarray(processed, dtype=np.float32).reshape(-1)
     # Isolated full-scale samples are quantisation/float conversion artefacts;
-    # flat runs are the reliable evidence of audible clipping.
-    clipped = int(flat_top_runs(source, min_len=8))
+    # flat runs are the reliable evidence of audible clipping.  Use full-scale
+    # detection here: relative-to-file-peak detection flags an already-limited
+    # or normalised import as clipped.
+    # A mic/input ceiling can be below digital full scale, so compare flat tops
+    # with the source's own peak.  A single full-scale sample still is not a run.
+    clipped = int(flat_top_runs(source, min_len=8, relative_to_peak=True))
     peak = _db(np.max(np.abs(processed), initial=0.0))
-    # True-peak reconstruction is relatively expensive on a long take.  It is
-    # advisory for source-vs-clean checks, so avoid the 4x pass when disabled.
-    tp = true_peak(processed, sr) if warn_true_peak else peak
+    # Always measure true peak so the UI never labels a sample peak as a true
+    # peak.  warn_true_peak only controls whether headroom becomes a warning.
+    tp = true_peak(processed, sr)
     n = min(len(source), len(processed))
     ref, out = source[:n], processed[:n]
     active = _active(ref)
     if active.any() and np.any(ref[active]):
-        # Remove gain difference before measuring added distortion.  A denoiser
-        # is expected to remove source-only noise; count only energy added by
-        # processing above the gain-adjusted source envelope.
-        gain = float(np.dot(ref[active], out[active]) / (np.dot(ref[active], ref[active]) + 1e-12))
-        expected = np.abs(gain * ref[active])
-        added = np.maximum(np.abs(out[active]) - expected, 0.0)
-        distortion = _db(np.sqrt(np.mean(added.astype(np.float64) ** 2)) /
-                          (np.sqrt(np.mean(out[active].astype(np.float64) ** 2)) + 1e-12))
+        # Compare short-time energy envelopes rather than samples.  Denoisers
+        # can add a small delay, change phase, and remove noise without being
+        # audibly distorted; sample-by-sample residuals falsely flag those
+        # normal transformations.
+        frame = max(1, int(0.020 * sr))
+        count = n // frame
+        ref_frames = ref[:count * frame].reshape(count, frame)
+        out_frames = out[:count * frame].reshape(count, frame)
+        ref_env = np.sqrt(np.mean(ref_frames * ref_frames, axis=1))
+        out_env = np.sqrt(np.mean(out_frames * out_frames, axis=1))
+        active_frames = ref_env > max(10 ** (-60 / 20), float(np.percentile(ref_env, 20)) * 3.0)
+        if active_frames.any():
+            gain = float(np.dot(ref_env[active_frames], out_env[active_frames]) /
+                         (np.dot(ref_env[active_frames], ref_env[active_frames]) + 1e-12))
+            added = np.maximum(out_env[active_frames] - gain * ref_env[active_frames], 0.0)
+            distortion = _db(np.sqrt(np.mean(added ** 2)) /
+                              (np.sqrt(np.mean(out_env[active_frames] ** 2)) + 1e-12))
+        else:
+            distortion = -120.0
     else:
         distortion = -120.0
-    dropouts = dropout_times(ref, out, sr)
+    all_dropouts = dropout_times(ref, out, sr, max_spots=None)
+    dropouts = all_dropouts[:200]
     warnings = []
     if clipped:
-        warnings.append(f"{clipped:,} clipped samples in the source")
+        warnings.append(f"{clipped:,} clipped flat-top runs in the source")
     if warn_true_peak and tp > clip_limit_db:
         warnings.append(f"true peak is {tp:.1f} dBFS (needs {clip_limit_db:.1f} dB headroom)")
     if distortion > max_distortion_db:
         warnings.append(f"processing distortion is {distortion:.1f} dB")
-    if dropouts:
-        warnings.append(f"{len(dropouts)} dropout{'s' if len(dropouts) != 1 else ''} detected")
+    if all_dropouts:
+        warnings.append(f"{len(all_dropouts)} dropout{'s' if len(all_dropouts) != 1 else ''} detected")
     return QualityReport(clipped, round(peak, 2),
-                         round(tp, 2), round(distortion, 2), dropouts, warnings)
+                         round(tp, 2), round(distortion, 2), dropouts, warnings, len(all_dropouts))

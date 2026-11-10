@@ -423,8 +423,8 @@ class MainWindow(QMainWindow):
         from core.edl import EditList
         s = Session(folder)
         try:
-            clean, _ = sf.read(s.clean, dtype="float32")
             edl = EditList.load(s.edits)
+            clean, _ = sf.read(s.dir / edl.source, dtype="float32")     # clean.wav, or an Audacity version
         except Exception as e:
             self._error(f"Couldn't open that take: {e}")
             return
@@ -438,9 +438,9 @@ class MainWindow(QMainWindow):
             self._show_plan(edl.output_duration())
             self.render()
         else:
-            # The optional raw-vs-clean check runs in AudioQualityWorker.  A
-            # missing raw backup must not prevent opening the saved take.
-            self._prepared(edl, clean, source=s.raw)
+            # Takes → "Open in editor": the waveform editor
+            self.edl, self.clean = edl, clean
+            self.open_editor()
 
     def start_recording(self):
         from core.capture import MicSource, Recorder
@@ -546,7 +546,7 @@ class MainWindow(QMainWindow):
     def _recorded(self, result):
         w = PrepareWorker(self.session, recording=result, cfg=self._cfg())
         w.stage.connect(self.message.setText)
-        self._run(w, self._prepared)
+        self._run(w, lambda edl, clean, source: self._prepared(edl, clean, source=source))
 
     # ================================================================== import
 
@@ -564,7 +564,7 @@ class MainWindow(QMainWindow):
         self.btn_open.hide()
         w = PrepareWorker(self.session, import_src=path, cfg=self._cfg())
         w.stage.connect(self.message.setText)
-        self._run(w, self._prepared)
+        self._run(w, lambda edl, clean, source: self._prepared(edl, clean, source=source))
 
     # ================================================================== review + render
 
@@ -583,14 +583,36 @@ class MainWindow(QMainWindow):
         self.companion.say("review")
         capture = self._capture_report()
         dlg = ReviewDialog(edl, clean, self, capture=capture, source=source, quality=quality,
-                           imported=capture is None)
-        if dlg.exec():
+                           imported=capture is None,
+                           quality_unavailable=source is None)
+        r = dlg.exec()
+        if r == ReviewDialog.EDIT:
+            self.open_editor()
+        elif r:
             self.polish = dlg.polish.isChecked()
             self.render()
         else:
             self._set_mode("done")
             self.message.setText("Edits saved. Import or record again, or reopen this session later.")
             edl.save(self.session.edits)
+
+    def open_editor(self):
+        """The waveform editor (T12). Edits are saved as she goes; Render video renders them."""
+        from .editor import EditorDialog
+        self._set_mode("review")
+        self.companion.say("review")
+        dlg = EditorDialog(self.session.dir, self.edl, self.clean, self,
+                           auto_cfg=self._cfg().auto_edit_config())     # same pause shaping as import / REC
+        r = dlg.exec()
+        self.clean = dlg.editor.audio               # the audio the edits refer to (an Audacity version, maybe)
+        self._show_plan(self.edl.output_duration())
+        self.timer.setText(_hms(self.edl.output_duration()))
+        if r:
+            self.polish = dlg.polish.isChecked()
+            self.render()
+        else:
+            self._set_mode("done")
+            self.message.setText("Edits saved. Reopen this take from Takes any time.")
 
     def render(self):
         cfg = self._cfg()
