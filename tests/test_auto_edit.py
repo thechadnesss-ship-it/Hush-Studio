@@ -75,8 +75,8 @@ def test_shaped_output_matches_sams_style():
     out = EditList(duration=len(x) / SR, sample_rate=SR, pauses=pauses).render(x)
     gaps = [e - s for s, e in detect_pauses(out, SR)]
     # Markers that happen to fall in the induction window use the measured 5 s pause.
-    assert sum(1 for g in gaps if 9.5 < g < 10.5) == 10
-    assert sum(1 for g in gaps if 4.5 < g < 5.5) == 2
+    assert sum(1 for g in gaps if 9.5 < g < 10.5) == 12
+    assert sum(1 for g in gaps if 4.5 < g < 5.5) == 0
     assert detect_speech(out, SR)[0][0] < 0.2                         # lead trimmed
     assert gaps[-1] == pytest.approx(13.0, abs=0.2)                   # tail kept at 13 s
     # the marker utterance itself is gone: fewer phrases out than in
@@ -137,7 +137,7 @@ def test_induction_boundaries_include_180_but_exclude_720_and_need_full_take():
 
     short_take = shape_pauses([(170.0, 171.0), (180.0, 181.0), (190.0, 191.0)],
                               719.0, AutoEditConfig(), markers=[1])
-    assert [p.new_length for p in short_take if p.kind == "marker"] == [5.0]
+    assert [p.new_length for p in short_take if p.kind == "marker"] == [10.0]
 
 
 def test_render_config_zero_disables_induction_pause_and_validates_bounds():
@@ -147,6 +147,12 @@ def test_render_config_zero_disables_induction_pause_and_validates_bounds():
         RenderConfig(marker_pause_s=0)
     with pytest.raises(ValueError):
         RenderConfig(induction_marker_pause_s=-1)
+    with pytest.raises(ValueError):
+        RenderConfig(marker_pause_s=5, induction_marker_pause_s=6)
+    with pytest.raises(ValueError):
+        RenderConfig(induction_end_s=0)
+    with pytest.raises(ValueError):
+        RenderConfig(induction_min_start_s=-1)
     with pytest.raises(ValueError):
         RenderConfig(induction_min_start_s=721, induction_end_s=720)
 

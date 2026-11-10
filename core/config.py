@@ -15,6 +15,12 @@ DEFAULT_RENDER_TOML = PROJECT_ROOT / "config" / "render.toml"
 FIT_POLICIES = ("nearest", "at_least", "exact")
 TARGET_HOURS_OPTIONS = (1, 3, 4, 6, 8)
 
+# Measured pause-shaping defaults shared by render configuration and auto-edit.
+DEFAULT_MARKER_PAUSE_S = 10.0
+DEFAULT_INDUCTION_MARKER_PAUSE_S = 5.0
+DEFAULT_INDUCTION_END_S = 720.0
+DEFAULT_INDUCTION_MIN_START_S = 180.0
+
 
 @dataclass(frozen=True)
 class RenderConfig:
@@ -32,10 +38,10 @@ class RenderConfig:
     seam_fade_ms: int = 1500
     polish: bool = False             # Studio polish (core/polish.py), chosen per session in review
     target_lufs: float = -21.0
-    marker_pause_s: float = 10.0
-    induction_marker_pause_s: float | None = 5.0
-    induction_end_s: float = 720.0
-    induction_min_start_s: float = 180.0
+    marker_pause_s: float = DEFAULT_MARKER_PAUSE_S
+    induction_marker_pause_s: float | None = DEFAULT_INDUCTION_MARKER_PAUSE_S
+    induction_end_s: float = DEFAULT_INDUCTION_END_S
+    induction_min_start_s: float = DEFAULT_INDUCTION_MIN_START_S
 
     def __post_init__(self) -> None:
         if self.fit_policy not in FIT_POLICIES:
@@ -49,6 +55,12 @@ class RenderConfig:
                 raise ValueError("induction_marker_pause_s must be >= 0")
             if self.induction_marker_pause_s == 0:
                 object.__setattr__(self, "induction_marker_pause_s", None)
+            elif self.induction_marker_pause_s > self.marker_pause_s:
+                raise ValueError("induction_marker_pause_s must be <= marker_pause_s")
+        if self.induction_end_s <= 0:
+            raise ValueError("induction_end_s must be > 0")
+        if self.induction_min_start_s < 0:
+            raise ValueError("induction_min_start_s must be >= 0")
         if self.induction_min_start_s > self.induction_end_s:
             raise ValueError("induction_min_start_s must be <= induction_end_s")
         w, _, h = self.resolution.partition("x")

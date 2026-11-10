@@ -15,12 +15,17 @@ Every decision is an entry Sam can change in review (marker ↔ not a marker, an
 """
 from __future__ import annotations
 
-from bisect import bisect_left
 from dataclasses import dataclass
 
 import numpy as np
 from scipy import signal
 
+from .config import (
+    DEFAULT_INDUCTION_END_S,
+    DEFAULT_INDUCTION_MARKER_PAUSE_S,
+    DEFAULT_INDUCTION_MIN_START_S,
+    DEFAULT_MARKER_PAUSE_S,
+)
 from .edl import Pause
 
 
@@ -28,10 +33,10 @@ from .edl import Pause
 class AutoEditConfig:
     silence_pauses: bool = True
     marker_detect: bool = True
-    marker_pause_s: float = 10.0       # her edit: 9–13 s, median ≈ 10
-    induction_marker_pause_s: float | None = 5.0  # shorter pauses in the induction; None = off
-    induction_end_s: float = 720.0                # early marker phase ends ~12 min in
-    induction_min_start_s: float = 180.0          # avoid changing short takes/tests
+    marker_pause_s: float = DEFAULT_MARKER_PAUSE_S
+    induction_marker_pause_s: float | None = DEFAULT_INDUCTION_MARKER_PAUSE_S
+    induction_end_s: float = DEFAULT_INDUCTION_END_S
+    induction_min_start_s: float = DEFAULT_INDUCTION_MIN_START_S
     marker_len_s: tuple[float, float] = (0.6, 1.8)
     marker_sim: float = 0.80           # detection threshold vs the marker template
     cluster_sim: float = 0.85          # "near-identical" for discovering the marker
@@ -105,7 +110,7 @@ def shape_pauses(speech: list[tuple[float, float]], duration: float, cfg: AutoEd
     mset = set(markers or [])
     kept = [(i, p) for i, p in enumerate(speech) if i not in mset]
     marker_spans = sorted(speech[i] for i in mset if 0 <= i < len(speech))
-    marker_starts = [s for s, _ in marker_spans]
+
     def overlaps_cut(a: float, b: float) -> bool:
         return any(a < ce and cs < b for cs, ce in cuts)
 
@@ -114,19 +119,21 @@ def shape_pauses(speech: list[tuple[float, float]], duration: float, cfg: AutoEd
         return out
     if kept[0][1][0] > cfg.lead_s:
         out.append(Pause(0.0, kept[0][1][0], cfg.lead_s, kind="lead"))
+    marker_pos = 0
+    induction_enabled = duration >= cfg.induction_end_s
     for (_, (_, a_end)), (_, (b_start, _)) in zip(kept, kept[1:]):
         if b_start - a_end <= 0 or overlaps_cut(a_end, b_start):
             continue
-        marker_idx = bisect_left(marker_starts, a_end)
-        gap_marker = next(
-            (span for span in marker_spans[marker_idx:] if span[0] <= b_start and span[1] <= b_start),
-            None,
-        )
+        while marker_pos < len(marker_spans) and marker_spans[marker_pos][1] <= a_end:
+            marker_pos += 1
+        gap_marker = (marker_spans[marker_pos]
+                      if marker_pos < len(marker_spans)
+                      and marker_spans[marker_pos][1] <= b_start else None)
         length = b_start - a_end
         if gap_marker is not None:
             marker_start = gap_marker[0]
             marker_pause_s = cfg.marker_pause_s
-            if (cfg.induction_marker_pause_s is not None
+            if (induction_enabled and cfg.induction_marker_pause_s is not None
                     and cfg.induction_min_start_s <= marker_start < cfg.induction_end_s):
                 marker_pause_s = cfg.induction_marker_pause_s
             out.append(Pause(a_end, b_start, marker_pause_s, kind="marker"))
