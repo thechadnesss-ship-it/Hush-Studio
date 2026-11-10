@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 from PyQt6.QtCore import QSettings, Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QMainWindow,
-                             QMessageBox, QProgressBar, QPushButton, QVBoxLayout, QWidget)
+                             QMenu, QMessageBox, QProgressBar, QPushButton, QVBoxLayout, QWidget)
 
 from core.app_info import APP_NAME, SETTINGS_ORG
 from core.asset_cache import AssetCache
@@ -125,6 +125,13 @@ class MainWindow(QMainWindow):
         self.btn_settings.setObjectName("link")
         self.btn_settings.clicked.connect(lambda: self.panel.setVisible(not self.panel.isVisible()))
         head.addWidget(self.btn_settings)
+        self.btn_help = QPushButton("Help")
+        self.btn_help.setObjectName("link")
+        self.help_menu = QMenu(self.btn_help)
+        self.act_debug = self.help_menu.addAction("Send debug report…")
+        self.act_debug.triggered.connect(self.send_debug_report)
+        self.btn_help.setMenu(self.help_menu)
+        head.addWidget(self.btn_help)
         lay.addLayout(head)
 
         # --- settings panel (hidden until asked for: minimal by default)
@@ -354,6 +361,13 @@ class MainWindow(QMainWindow):
             SkyDialog(self.planner.forecast(), parent=self).exec()
 
     # ================================================================== settings
+
+    def send_debug_report(self):
+        from .debug_report import DebugReportDialog
+        sessions = sorted((p for p in SESSIONS_DIR.glob("*") if p.is_dir()), reverse=True) if SESSIONS_DIR.exists() else []
+        cur = getattr(getattr(self, "session", None), "dir", None)
+        cfg = {k: self.settings.value(k) for k in self.settings.allKeys()}
+        DebugReportDialog(sessions, cur, cfg, self).exec()
 
     def _fill_mics(self):
         self.mic.addItem("Default microphone", None)
