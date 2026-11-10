@@ -424,6 +424,9 @@ class MainWindow(QMainWindow):
         s = Session(folder)
         try:
             clean, _ = sf.read(s.clean, dtype="float32")
+            source, _ = sf.read(s.raw, dtype="float32", always_2d=False)
+            if source.ndim > 1:
+                source = source.mean(axis=1)
             edl = EditList.load(s.edits)
         except Exception as e:
             self._error(f"Couldn't open that take: {e}")
@@ -438,7 +441,7 @@ class MainWindow(QMainWindow):
             self._show_plan(edl.output_duration())
             self.render()
         else:
-            self._prepared(edl, clean)
+            self._prepared(edl, clean, source=source)
 
     def start_recording(self):
         from core.capture import MicSource, Recorder
@@ -573,13 +576,15 @@ class MainWindow(QMainWindow):
         except (OSError, ValueError, AttributeError):
             return None
 
-    def _prepared(self, edl, clean, quality=None):
+    def _prepared(self, edl, clean, quality=None, source=None):
         self.edl, self.clean = edl, clean
         self._show_plan(edl.output_duration())
         self.timer.setText(_hms(edl.output_duration()))
         self._set_mode("review")
         self.companion.say("review")
-        dlg = ReviewDialog(edl, clean, self, capture=self._capture_report(), quality=quality)
+        capture = self._capture_report()
+        dlg = ReviewDialog(edl, clean, self, capture=capture, source=source, quality=quality,
+                           imported=capture is None)
         if dlg.exec():
             self.polish = dlg.polish.isChecked()
             self.render()

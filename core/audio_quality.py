@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy import signal
 
-from .diagnostics import CLIP, SR, zero_gaps
+from .diagnostics import CLIP, SR, flat_top_runs, zero_gaps
 
 
 @dataclass
@@ -37,16 +37,26 @@ def _db(value: float) -> float:
     return float(20 * np.log10(max(float(value), 1e-12)))
 
 
-def true_peak(x: np.ndarray, sr: int = SR, oversample: int = 4) -> float:
-    """Return an inter-sample peak in dBFS using a polyphase reconstruction filter."""
+def true_peak(x: np.ndarray, sr: int = SR, oversample: int = 4,
+              chunk_samples: int = 1_000_000) -> float:
+    """Return an inter-sample peak without materialising an oversampled whole take."""
     x = np.asarray(x, dtype=np.float32)
     if not len(x):
         return -120.0
-    if oversample > 1 and len(x) > 8:
-        y = signal.resample_poly(x, oversample, 1)
-    else:
-        y = x
-    return _db(np.max(np.abs(y), initial=0.0))
+    if oversample <= 1 or len(x) <= 8:
+        return _db(np.max(np.abs(x), initial=0.0))
+    # A small overlap keeps the FIR reconstruction valid at chunk boundaries.  Only
+    # the centre of each reconstructed chunk contributes to the measured peak.
+    overlap = 64
+    peak = 0.0
+    for start in range(0, len(x), chunk_samples):
+        end = min(len(x), start + chunk_samples)
+        left, right = max(0, start - overlap), min(len(x), end + overlap)
+        y = signal.resample_poly(x[left:right], oversample, 1)
+        centre_start = (start - left) * oversample
+        centre_end = centre_start + (end - start) * oversample
+        peak = max(peak, float(np.max(np.abs(y[centre_start:centre_end]), initial=0.0)))
+    return _db(peak)
 
 
 def _active(x: np.ndarray, frame: int = 960) -> np.ndarray:
@@ -59,7 +69,8 @@ def _active(x: np.ndarray, frame: int = 960) -> np.ndarray:
     return np.pad(active, (0, len(x) - len(active)), constant_values=False)
 
 
-def dropout_times(source: np.ndarray, processed: np.ndarray, sr: int = SR) -> list[float]:
+def dropout_times(source: np.ndarray, processed: np.ndarray, sr: int = SR,
+                  max_spots: int = 200) -> list[float]:
     """Find 5--60 ms processed gaps where the source still contains sound."""
     n = min(len(source), len(processed))
     if n == 0:
@@ -73,15 +84,24 @@ def dropout_times(source: np.ndarray, processed: np.ndarray, sr: int = SR) -> li
         a, b = int(t * sr), min(n, int(t * sr) + int(.060 * sr))
         if source_active[a:b].any():
             result.append(t)
-    return result
+    # A single model/encoder hiccup can produce adjacent zero runs.  Present one
+    # playable spot per event and keep the review dialog bounded on long takes.
+    merged: list[float] = []
+    for t in result:
+        if not merged or t - merged[-1] > 0.5:
+            merged.append(t)
+    return merged[:max_spots]
 
 
 def analyze(source: np.ndarray, processed: np.ndarray, sr: int = SR,
-            clip_limit_db: float = -1.0, max_distortion_db: float = -10.0) -> QualityReport:
+            clip_limit_db: float = -1.0, max_distortion_db: float = -10.0,
+            warn_true_peak: bool = True) -> QualityReport:
     """Check clipping, peak headroom, processing distortion, and source-relative gaps."""
     source = np.asarray(source, dtype=np.float32).reshape(-1)
     processed = np.asarray(processed, dtype=np.float32).reshape(-1)
-    clipped = int(np.count_nonzero(np.abs(source) >= CLIP))
+    # Isolated full-scale samples are quantisation/float conversion artefacts;
+    # flat runs are the reliable evidence of audible clipping.
+    clipped = int(flat_top_runs(source, min_len=8))
     peak = _db(np.max(np.abs(processed), initial=0.0))
     tp = true_peak(processed, sr)
     n = min(len(source), len(processed))
@@ -99,15 +119,11 @@ def analyze(source: np.ndarray, processed: np.ndarray, sr: int = SR,
     warnings = []
     if clipped:
         warnings.append(f"{clipped:,} clipped samples in the source")
-    if tp > clip_limit_db:
+    if warn_true_peak and tp > clip_limit_db:
         warnings.append(f"true peak is {tp:.1f} dBFS (needs {clip_limit_db:.1f} dB headroom)")
     if distortion > max_distortion_db:
         warnings.append(f"processing distortion is {distortion:.1f} dB")
     if dropouts:
         warnings.append(f"{len(dropouts)} dropout{'s' if len(dropouts) != 1 else ''} detected")
-    return QualityReport(clipped, round(_db(np.max(np.abs(processed), initial=0.0)), 2),
+    return QualityReport(clipped, round(peak, 2),
                          round(tp, 2), round(distortion, 2), dropouts, warnings)
-
-
-# Descriptive public alias used by callers that prefer the domain wording.
-check_audio_quality = analyze

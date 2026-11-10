@@ -35,11 +35,13 @@ def play(x: np.ndarray) -> None:
 
 class ReviewDialog(QDialog):
     def __init__(self, edl: EditList, clean: np.ndarray, parent=None, capture: dict | None = None,
-                 source: np.ndarray | None = None, quality: QualityReport | None = None):
+                 source: np.ndarray | None = None, quality: QualityReport | None = None,
+                 imported: bool = False):
         super().__init__(parent)
         self.setWindowTitle("Review edits")
         self.resize(760, 620)
         self.edl, self.clean = edl, clean
+        self.imported = imported
         self._removed_markers = []
         lay = QVBoxLayout(self)
 
@@ -55,10 +57,28 @@ class ReviewDialog(QDialog):
         self.quality_check.setWordWrap(True)
         self.quality_check.setVisible(source is not None or quality is not None)
         lay.addWidget(self.quality_check)
+        self._quality_worker = None
         if quality is None and source is not None:
-            quality = analyze(source, clean)
+            from .workers import AudioQualityWorker
+            self.quality_check.setText("Audio quality: checking...")
+            self._quality_worker = AudioQualityWorker(source, clean, self)
+            self._quality_worker.done.connect(self._show_quality)
         if quality is not None:
             self._show_quality(quality)
+        self.dropout_row = QHBoxLayout()
+        self.dropout_row.setContentsMargins(0, 0, 0, 0)
+        self.dropout_strip = QScrollArea()
+        self.dropout_strip.setWidgetResizable(True)
+        self.dropout_strip.setFrameShape(QFrame.Shape.NoFrame)
+        self.dropout_strip.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.dropout_strip.setFixedHeight(52)
+        dropout_inner = QWidget()
+        dropout_inner.setLayout(self.dropout_row)
+        self.dropout_strip.setWidget(dropout_inner)
+        self.dropout_strip.setVisible(False)
+        lay.addWidget(self.dropout_strip)
+        if self._quality_worker is not None:
+            self._quality_worker.start()
         # every recorded loss spot gets its own ▶; a scrolling strip holds up to MAX_LOST_SPOTS of them
         self.lost_row = QHBoxLayout()
         self.lost_row.setContentsMargins(0, 0, 0, 0)
@@ -116,15 +136,27 @@ class ReviewDialog(QDialog):
     # ------------------------------------------------------------------ recording check
 
     def _show_quality(self, report: QualityReport) -> None:
+        if report is None:
+            self.quality_check.setText("Audio quality check unavailable; inspect the take before rendering.")
+            self.quality_check.setStyleSheet(f"color:{theme.AMBER};")
+            return
         if report.passed:
             self.quality_check.setText(
                 f"Audio quality: OK · peak {report.peak_dbfs:.1f} dBFS · "
                 f"true peak {report.true_peak_dbfs:.1f} dBFS · distortion {report.distortion_db:.1f} dB.")
             self.quality_check.setStyleSheet(f"color:{theme.GREEN};")
         else:
-            self.quality_check.setText("Audio quality warning: " + "; ".join(report.warnings) +
-                                      ". Record this take again before finishing.")
+            advice = ("Import a cleaner file before finishing."
+                      if self.imported else "Record this take again before finishing.")
+            self.quality_check.setText("Audio quality warning: " + "; ".join(report.warnings) + ". " + advice)
             self.quality_check.setStyleSheet(f"color:{theme.RED}; font-weight:600;")
+        if report.dropouts:
+            for t in report.dropouts:
+                btn = self._play_btn(t, t + 0.06)
+                btn.setText(f"▶  {fmt_mmss(t)}")
+                self.dropout_row.addWidget(btn)
+            self.dropout_row.addStretch(1)
+            self.dropout_strip.setVisible(True)
 
     def _show_capture(self, cap: dict) -> None:
         spots = list(cap.get("lost_at_s", []))
