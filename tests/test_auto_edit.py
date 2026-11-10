@@ -216,3 +216,20 @@ def test_real_take_reproduces_her_edit():
     assert not any(p.start <= 13.1 <= p.end for p in markers)
     out = EditList(duration=len(x) / SR, sample_rate=SR, pauses=pauses).render(x)
     assert 0.65 < float((out == 0).mean()) < 0.80                     # her edit: 71% digital silence
+
+
+def test_flub_restart_is_proposed_not_applied():
+    from core.auto_edit import find_flubs
+    rng = np.random.default_rng(3)
+    def phrase(seed, n=2.0):
+        r = np.random.default_rng(seed)
+        t = np.arange(int(n * SR)) / SR
+        return (sum(np.sin(2 * np.pi * f * t * (1 + 0.1 * np.sin(2 * np.pi * k * t))) for k, f in enumerate(r.uniform(300, 3000, 6)))
+                * 0.05).astype(np.float32)
+    a, b, c = phrase(1), phrase(2), phrase(3)
+    gap = np.zeros(SR, np.float32)
+    x = np.concatenate([a, gap, b, gap, b, gap, c])          # b said twice = a restart
+    speech = [(0, 2), (3, 5), (6, 8), (9, 11)]
+    cuts = find_flubs(x, SR, speech)
+    assert len(cuts) == 1 and 2.85 < cuts[0][0] < 3.1 and 5.8 < cuts[0][1] < 6.0
+    assert find_flubs(x, SR, [(0, 2), (3, 5), (9, 11)]) == []

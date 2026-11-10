@@ -22,13 +22,14 @@ from pathlib import Path
 import numpy as np
 from PyQt6.QtCore import QSettings, Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QMainWindow,
-                             QMessageBox, QProgressBar, QPushButton, QVBoxLayout, QWidget)
+                             QMenu, QMessageBox, QProgressBar, QPushButton, QVBoxLayout, QWidget)
 
 from core.app_info import APP_NAME, SETTINGS_ORG
 from core.asset_cache import AssetCache
 from core.config import DATA_ROOT, PROJECT_ROOT, TARGET_HOURS_OPTIONS, load_render_config
 from core.renderer import TakeTooShortError, fmt_hms, fmt_mmss, plan_render
 from core.session import Session
+from core.takes import TakeLibrary, migrate_sessions_folder
 
 from . import theme
 from .review import ReviewDialog
@@ -41,7 +42,8 @@ MIC_WARN_HOLD_S = 6.0
 MIC_CLIP_WARNING = ("Mic too loud: it's clipping, which sounds harsh. Turn the mic level down "
                     "(Windows Sound settings → Recording → your mic → Properties → Levels).")
 MIC_DROP_WARNING = "Some sound was lost: the computer was too busy. Close other apps if it keeps happening."
-SESSIONS_DIR = DATA_ROOT / "sessions"
+TAKES_DIR = migrate_sessions_folder(DATA_ROOT)      # D04: one folder per take, visible in Explorer
+SESSIONS_DIR = TAKES_DIR
 ASSETS_DIR = PROJECT_ROOT / "assets"
 
 
@@ -88,6 +90,7 @@ class MainWindow(QMainWindow):
         self.cfg = load_render_config()
         self.assets = AssetCache(self.cfg)
         self.recorder = None
+        self.library = TakeLibrary(TAKES_DIR)
         self.session: Session | None = None
         self.edl = None
         self.clean = None
@@ -121,10 +124,21 @@ class MainWindow(QMainWindow):
         self.target.setCurrentIndex(self.target.findData(int(self.settings.value("target_hours", 8))))
         self.target.currentIndexChanged.connect(self._target_changed)
         head.addWidget(self.target)
+        self.btn_takes = QPushButton("Takes")
+        self.btn_takes.setObjectName("link")
+        self.btn_takes.clicked.connect(self.show_takes)
+        head.addWidget(self.btn_takes)
         self.btn_settings = QPushButton("Settings")
         self.btn_settings.setObjectName("link")
         self.btn_settings.clicked.connect(lambda: self.panel.setVisible(not self.panel.isVisible()))
         head.addWidget(self.btn_settings)
+        self.btn_help = QPushButton("Help")
+        self.btn_help.setObjectName("link")
+        self.help_menu = QMenu(self.btn_help)
+        self.act_debug = self.help_menu.addAction("Send debug report…")
+        self.act_debug.triggered.connect(self.send_debug_report)
+        self.btn_help.setMenu(self.help_menu)
+        head.addWidget(self.btn_help)
         lay.addLayout(head)
 
         # --- settings panel (hidden until asked for: minimal by default)
@@ -355,6 +369,13 @@ class MainWindow(QMainWindow):
 
     # ================================================================== settings
 
+    def send_debug_report(self):
+        from .debug_report import DebugReportDialog
+        sessions = sorted((p for p in SESSIONS_DIR.glob("*") if p.is_dir()), reverse=True) if SESSIONS_DIR.exists() else []
+        cur = getattr(getattr(self, "session", None), "dir", None)
+        cfg = {k: self.settings.value(k) for k in self.settings.allKeys()}
+        DebugReportDialog(sessions, cur, cfg, self).exec()
+
     def _fill_mics(self):
         self.mic.addItem("Default microphone", None)
         try:
@@ -386,9 +407,38 @@ class MainWindow(QMainWindow):
     # ================================================================== recording
 
     def _new_session(self) -> Session:
-        s = Session(SESSIONS_DIR / datetime.now().strftime("%Y-%m-%d_%H%M%S"))
-        s.dir.mkdir(parents=True, exist_ok=True)
-        return s
+        return Session(self.library.new_dir())
+
+    def show_takes(self):
+        from .takes import TakesDialog
+        busy = self.mode not in ("idle", "done")
+        dlg = TakesDialog(self.library, self, busy=busy)
+        if not dlg.exec() or dlg.result_take is None:
+            return
+        self.reopen_take(dlg.result_take.dir, dlg.result_action)
+
+    def reopen_take(self, folder: Path, action: str = "review"):
+        """Load a saved take (clean audio + edit list) back into the editor or straight to render."""
+        import soundfile as sf
+        from core.edl import EditList
+        s = Session(folder)
+        try:
+            clean, _ = sf.read(s.clean, dtype="float32")
+            edl = EditList.load(s.edits)
+        except Exception as e:
+            self._error(f"Couldn't open that take: {e}")
+            return
+        self.session = s
+        self.output = None
+        self.btn_open.hide()
+        self.btn_upload.hide()
+        self.btn_yt.hide()
+        if action == "render":
+            self.edl, self.clean = edl, clean
+            self._show_plan(edl.output_duration())
+            self.render()
+        else:
+            self._prepared(edl, clean)
 
     def start_recording(self):
         from core.capture import MicSource, Recorder
@@ -596,6 +646,10 @@ class MainWindow(QMainWindow):
         self.companion.say("success", text="Uploaded! Tap to open.")
         self.message.setText(UNVERIFIED_NOTE if res.locked_private else f"Uploaded as {res.privacy}.")
         self.btn_yt.show()
+        try:
+            self.library.mark_uploaded(self.session.dir, res.url)
+        except Exception:
+            pass
         try:
             self.btn_yt.clicked.disconnect()
         except TypeError:

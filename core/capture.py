@@ -30,6 +30,10 @@ from typing import Callable, Protocol
 import numpy as np
 import soundfile as sf
 
+from .log_setup import get_logger
+
+log = get_logger("capture")
+
 from .denoise import DFN_PREROLL_S, SpectralGate, deepfilter_array, deepfilter_exe
 from .plane_guard.ear import Ear
 from .plane_guard.guard import Guard, GuardUpdate
@@ -73,6 +77,7 @@ class MicSource:
             d = sd.query_devices(self.stream.device)
             self.info = {"device": d["name"], "host_api": sd.query_hostapis(d["hostapi"])["name"],
                          "device_default_rate": d["default_samplerate"], "stream_rate": self.stream.samplerate}
+            log.info("input opened: %s [%s] %s Hz", self.info["device"], self.info["host_api"], self.info["stream_rate"])
         except Exception:
             self.info = {}
 
@@ -192,6 +197,7 @@ class Recorder:
 
     def start(self) -> None:
         self.session.dir.mkdir(parents=True, exist_ok=True)
+        log.info("recording started: %s", self.session.dir.name)
         self._raw_file = sf.SoundFile(self.session.raw, "w", SR, 1, format="FLAC", subtype="PCM_24")
         self._running.set()
         self._worker = threading.Thread(target=self._work, name="recorder", daemon=True)
@@ -242,6 +248,9 @@ class Recorder:
         clean = np.concatenate([clean, np.zeros(max(0, self._samples - len(clean)), np.float32)])[: self._samples]
         sf.write(self.session.clean, clean, SR, subtype="FLOAT")
         self._write_capture_report()
+        rep = self.capture_report()
+        log.info("recording stopped: take %.1fs, peak %.1f dBFS, clipped %s, lost buffers %s, denoise %s",
+                 rep["take_s"], rep["peak_dbfs"], rep["clipped_samples"], rep["lost_buffers"], rep["denoise_backend"])
         return RecordingResult(self.session.raw, clean, list(self.ear.events), self.take_s,
                                self.status.denoise_backend, list(self.guard.history))
 

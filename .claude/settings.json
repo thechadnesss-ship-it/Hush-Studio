@@ -1,6 +1,6 @@
 {
   "statusLine": {
     "type": "command",
-    "command": "python ops/claude_statusline.py"
+    "command": "python C:/Users/chadj/Narthen-Control/Tools/claude_statusline.py"
   }
 }

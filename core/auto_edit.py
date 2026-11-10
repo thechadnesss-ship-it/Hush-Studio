@@ -33,6 +33,7 @@ from .edl import Pause
 class AutoEditConfig:
     silence_pauses: bool = True
     marker_detect: bool = True
+    flub_detect: bool = True
     marker_pause_s: float = DEFAULT_MARKER_PAUSE_S
     induction_marker_pause_s: float | None = DEFAULT_INDUCTION_MARKER_PAUSE_S
     induction_end_s: float = DEFAULT_INDUCTION_END_S
@@ -44,6 +45,11 @@ class AutoEditConfig:
     cap_pause_s: float = 15.0          # her edit: only 1 pause over 15 s (raw had 7)
     lead_s: float = 0.1
     tail_s: float = 13.0
+    flub_min_s: float = 1.5            # only phrases at least this long can be restarts
+    flub_sim: float = 0.88             # a repeat must look this much like the first attempt
+    flub_lookahead: int = 2            # restart within this many phrases
+    flub_max_gap_s: float = 8.0
+    flub_pad_s: float = 0.1
 
     @classmethod
     def from_render_config(cls, cfg) -> "AutoEditConfig":
@@ -99,6 +105,36 @@ def find_markers(x: np.ndarray, sr: int, speech: list[tuple[float, float]], cfg:
         template /= np.linalg.norm(template) + 1e-9
     sims = F @ template
     return [cand[j] for j in np.flatnonzero(sims >= cfg.marker_sim)], template
+
+
+# ----------------------------------------------------------------------------- flub proposals
+
+def find_flubs(x: np.ndarray, sr: int, speech: list[tuple[float, float]], marker_idx: list[int] | None = None,
+               cfg: AutoEditConfig = AutoEditConfig()) -> list[tuple[float, float]]:
+    """Proposed flub cuts: a phrase said again a moment later (a restart) → cut the first attempt.
+
+    Returns (start, end) source ranges: from just before the first attempt to just before its
+    repeat. These are only *proposals*; Sam accepts or undoes each in review."""
+    skip = set(marker_idx or [])
+    cand = [i for i, (s, e) in enumerate(speech) if i not in skip and e - s >= cfg.flub_min_s]
+    if len(cand) < 2:
+        return []
+    F = phrase_features(x, sr, [speech[i] for i in cand])
+    out: list[tuple[float, float]] = []
+    for a in range(len(cand) - 1):
+        i = cand[a]
+        for b in range(a + 1, min(a + 1 + cfg.flub_lookahead, len(cand))):
+            j = cand[b]
+            if speech[j][0] - speech[i][1] > cfg.flub_max_gap_s:
+                break
+            if float(F[a] @ F[b]) >= cfg.flub_sim:
+                prev_end = speech[i - 1][1] if i > 0 else 0.0
+                start = max(prev_end + (speech[i][0] - prev_end) / 2, speech[i][0] - cfg.flub_pad_s)
+                end = speech[j][0] - cfg.flub_pad_s
+                if end > start:
+                    out.append((round(start, 3), round(end, 3)))
+                break
+    return out
 
 
 # ----------------------------------------------------------------------------- pause shaping

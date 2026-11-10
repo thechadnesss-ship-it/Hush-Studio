@@ -23,10 +23,10 @@ import soundfile as sf
 from . import ffmpeg_tools as ff
 from . import renderer
 from .asset_cache import AssetCache
-from .auto_edit import AutoEditConfig, auto_edit
+from .auto_edit import AutoEditConfig, auto_edit, find_flubs, find_markers
 from .config import RenderConfig
 from .denoise import Denoiser, SpectralGate, deepfilter_array, deepfilter_exe, denoise_array
-from .edl import EditList
+from .edl import Cut, EditList
 from .master import MasterReport, master_to_m4a
 from .plane_guard.ear import Ear, EarEvent, holds_from_events
 from .plane_guard.splicer import add_plane_cuts
@@ -82,14 +82,19 @@ def denoise(session: Session, x: np.ndarray, denoiser: Denoiser | None = None,
     Writes clean.wav. Pass `denoiser` to force a specific streaming backend."""
     if attenuation_limit_db is None:
         attenuation_limit_db = 100.0 if denoiser is None and deepfilter_exe() is not None else 18.0
+    from .log_setup import get_logger
+    log = get_logger("denoise")
+    log.info("denoise start: %.1fs audio, attenuation limit %s dB", len(x) / SR, attenuation_limit_db)
     if denoiser is None and deepfilter_exe() is not None:
         y = deepfilter_array(x, SR, attenuation_limit_db, work_dir=session.dir)
         sf.write(session.clean, y, SR, subtype="FLOAT")
+        log.info("denoise done: deepfilternet")
         return y, "deepfilternet"
     from .denoise import SpectralGateConfig
     d = denoiser or SpectralGate(SpectralGateConfig(attenuation_limit_db=attenuation_limit_db))
     y = denoise_array(x, d, chunk=SR * 60)       # whole files: big batches (live REC uses 100 ms)
     sf.write(session.clean, y, SR, subtype="FLOAT")
+    log.info("denoise done: %s", type(d).__name__)
     return y, type(d).__name__
 
 
@@ -112,7 +117,12 @@ def prepare(session: Session, raw: np.ndarray | None, clean: np.ndarray,
     edl = EditList(duration=dur, sample_rate=SR)
     holds = holds_from_events(ear_events, dur)
     add_plane_cuts(edl, holds, speech, onsets=[e.t for e in ear_events if e.kind == "rising"])
-    edl.pauses, _ = auto_edit(clean, SR, speech, dur, auto, cuts=edl.active_cuts(), template=marker_template)
+    edl.pauses, template = auto_edit(clean, SR, speech, dur, auto, cuts=edl.active_cuts(), template=marker_template)
+    if auto.flub_detect:
+        markers, _ = find_markers(clean, SR, speech, auto, template) if auto.marker_detect else ([], None)
+        for s, e in find_flubs(clean, SR, speech, markers, auto):
+            if not any(s < c.end and c.start < e for c in edl.cuts):          # plane cuts win
+                edl.cuts.append(Cut(s, e, "flub", keep=True, proposed=True, note="said again"))
     edl.save(session.edits)
     return edl
 

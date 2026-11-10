@@ -93,6 +93,9 @@ makes speaking hard → "Listen back (last 15 s)" while paused instead.
   session's first frames up to a ≥ 1 s pause, padded with cached silence frames, so the video ends
   in a sentence break at exactly the target length. Import-only costs (live REC does these during
   recording): noise removal ≈ 20 s and the ear ≈ 14 s for 33 min.
+- **Flub proposals (T4):** `auto_edit.find_flubs` proposes a cut where a ≥ 1.5 s phrase is said again within 2 phrases / 8 s
+  (feature similarity ≥ 0.88; threshold unmeasured on real takes). They are `Cut(reason="flub", proposed=True, keep=True)`:
+  listed in review, **not applied** until Sam presses Accept (`keep=False`) or Undo; render honours `keep`. Plane cuts win on overlap.
 - **Denoise:** `deepfilternet` pip has no Py3.12 Windows wheel → the official `deep-filter.exe`
   (v0.5.6, 26 912 256 bytes, sha256 75e11fa1…7915) in `tools/deepfilter/` (gitignored; installed by
   the user). On Sam's real voice + synthetic noise: plane in pauses −33 dB (gate −15), plane under
@@ -120,6 +123,19 @@ makes speaking hard → "Listen back (last 15 s)" while paused instead.
   red line under it says to turn the mic level down; lost input buffers get their own warning there.
   Review (T8): live takes show a "Recording check" line from capture.json: lost-sound count with a ▶
   per spot (`lost_at_s`, take time, merged within 0.5 s, max 200) and clipping, or a green all-clear.
+- **Logging (T19, `core/log_setup.py`):** `main.py` calls `setup_logging()` first: rotating `hush-studio.log` (2 MB × 5) in
+  `%LOCALAPPDATA%\HushStudio\logs`, loggers `hush.{app,capture,denoise,render,upload}`, a redacting filter (tokens, secrets,
+  upload ids, tracebacks included), startup report (app/Windows/Python/Qt/FFmpeg versions, input devices + host API), and a
+  global `sys`/`threading` excepthook that logs the traceback and shows a friendly box. Per-take `capture.json` is unchanged.
+- **Debug bundle (T20, `core/debug_bundle.py`, `ui/debug_report.py`):** Help > Send debug report → zip Sam saves (flash drives
+  listed first, "Copy to flash drive" after) with logs, system info, settings (secret keys dropped, values redacted), and for the
+  chosen take capture.json + the `core.diagnostics` stage report. Audio only as ticked ~6 s clips around clipping / dropouts /
+  lost sound (none ticked by default; D06: nothing is uploaded). `python -m core.diagnostics bundle.zip` prints the same report.
+- **Takes library (T10, D04, `core/takes.py`, `ui/takes.py`):** one folder per take in `Takes/` (was `sessions/`; renamed once at
+  startup, nothing deleted), each with `take.json` (name, created, notes, uploaded). Folder name stays the timestamp; rename only edits
+  `name`. Status derived from files: raw → edited (edits.json) → rendered (output_*h.mp4) → uploaded (take.json). Takes screen (header
+  "Takes"): search, rename, duplicate (no rendered video), delete (confirmed), Show in Explorer, open in editor / render, export/import
+  `.hushtake` zip. Older folders without take.json are listed too.
 - **Live capture (`core/capture.py`):** callback only enqueues; full queue drops + counts (a
   simulated faster-than-real-time source uses backpressure instead). USB mic verified at 48 kHz.
 
