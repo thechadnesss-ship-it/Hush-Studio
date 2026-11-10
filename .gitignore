@@ -1,0 +1,23 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+cache/
+sessions/
+token.json
+*.part
+.work/
+tools/deepfilter/*.exe
+tools/deepfilter/*.dll
+data/
+
+# raw source media (private, large)
+*.mp3
+*.wav
+*.mp4
+*.m4a
+*.flac
+# control app runtime
+ops/*.lock
+ops/*.tmp
+ops/usage_cache.json

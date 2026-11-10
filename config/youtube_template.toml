@@ -1,0 +1,23 @@
+# YouTube upload template. Matches the Sam Katz Hypnosis channel as measured on 2026-11-09.
+# Placeholders: {hook} (the line Sam types per video), {hours}, {date}
+
+title = "{hook} | Deep Sleep Hypnosis (Black Screen)"
+default_hook = "Close Your Eyes… You Won't Notice When Sleep Takes Over 😴"
+
+description = """For specialized hypnosis audio, you can browse my store here: https://samkatz.store
+And if you’re curious about learning hypnosis, start here: https://samkatz.store/collections/learn-hypnosis"""
+
+tags = [
+  "sleep hypnosis", "sleep hypnosis female voice", "sleep meditation black screen",
+  "sleep meditation ambience", "sleep meditation", "hypnosis for sleep", "meditation for sleep",
+  "sleep hypnosis black screen", "8 hour hypnosis for sleep", "deep sleep hypnosis to fall asleep fast",
+  "Meditation for sleep black screen", "deep sleep hypnosis fall asleep fast",
+  "deep sleep guided meditation female voice", "deep sleep meditation music dark screen",
+  "relaxation music for sleep", "sleep noise black screen", "sleep", "asmr",
+]
+
+category_id = "10"            # Music (what the channel uses)
+privacy = "private"           # private | unlisted | public  (see the note on unverified API projects)
+publish_time = "04:00"        # local time for scheduled publishing (04:00 SAST = 02:00 UTC, the channel's usual)
+made_for_kids = false
+language = "en"

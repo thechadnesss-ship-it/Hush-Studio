@@ -1,0 +1,17 @@
+# Runtime (also needs FFmpeg >= 6 on PATH, or PIKA_FFMPEG_DIR set)
+numpy>=1.26
+scipy>=1.11
+soundfile>=0.12
+sounddevice>=0.5           # live mic capture (bundles PortAudio on Windows)
+PyQt6>=6.6                 # app window
+pyloudnorm>=0.1.1          # reference BS.1770 meter (core/master.py has a fast vectorised one)
+google-auth>=2.30          # YouTube upload (OAuth); upload protocol itself is core/youtube_publisher.py
+google-auth-oauthlib>=1.2
+requests>=2.31
+
+# DeepFilterNet3 AI noise removal: the pip package has no Python 3.12 Windows wheel, so use the
+# official release binary: tools/deepfilter/deep-filter.exe (v0.5.6). Optional; the built-in
+# spectral gate is used when it's missing.
+
+# Tests
+pytest>=8

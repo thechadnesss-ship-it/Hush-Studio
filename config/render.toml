@@ -1,0 +1,25 @@
+# Render settings: "encode once, copy forever".
+# Changing any video/audio setting here invalidates the matching cache/ entries
+# (they are keyed by a hash of these values) and they are rebuilt on demand.
+
+target_hours = 8            # 1 / 3 / 4 / 6 / 8
+fit_policy = "exact"        # "nearest" | "at_least" | "exact"  (channel uploads are exact lengths)
+
+# Black video loop (built once, then stream-copied M times)
+resolution = "1920x1080"
+loop_fps = 30               # must match the intro card (one H.264 track)
+black_frame_s = 1.0         # show each black frame this long (VFR): 30x fewer black frames to upload. 0 = native 30 fps
+black_loop_seconds = 60
+
+# Audio (intro, session and tail MUST share these or concat-copy fails)
+audio_codec = "aac"
+audio_bitrate = "128k"
+audio_sample_rate = 48000
+audio_channels = 1
+# FFmpeg native AAC coder. "fast" ≈ 2x quicker than "twoloop" (30 min: ~12 s vs ~25 s
+# measured); at 128 kbps mono speech the difference is not audible.
+aac_coder = "fast"
+
+# Mastering
+seam_fade_ms = 1500
+target_lufs = -21.0         # matches Sam's edited takes / back catalogue (measured), not -14

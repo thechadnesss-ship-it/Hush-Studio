@@ -1,0 +1,123 @@
+{
+  "budget": {
+    "cap_usd": 100.0
+  },
+  "next_id": 7,
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Test YouTube upload with Sam's real Google account (private-lock limitation shown)",
+      "status": "todo",
+      "priority": 1,
+      "owner": "sam",
+      "est_usd": 0.0,
+      "depends": [],
+      "notes": "",
+      "created": "2026-11-10 11:40:57",
+      "updated": "2026-11-10 11:40:57"
+    },
+    {
+      "id": "T2",
+      "title": "Update CLAUDE.md Module C to match shipped mastering (-21 LUFS, light chain)",
+      "status": "todo",
+      "priority": 3,
+      "owner": "claude",
+      "est_usd": 0.5,
+      "depends": [],
+      "notes": "",
+      "created": "2026-11-10 11:40:57",
+      "updated": "2026-11-10 11:40:57"
+    },
+    {
+      "id": "T3",
+      "title": "Auto-edit: handle shorter induction-phase marker pauses",
+      "status": "todo",
+      "priority": 2,
+      "owner": "codex",
+      "est_usd": 3.0,
+      "depends": [],
+      "notes": "",
+      "created": "2026-11-10 11:40:57",
+      "updated": "2026-11-10 11:41:06"
+    },
+    {
+      "id": "T4",
+      "title": "Review UI: flub-cut proposals Sam can accept/undo before render",
+      "status": "todo",
+      "priority": 2,
+      "owner": "claude",
+      "est_usd": 4.0,
+      "depends": [],
+      "notes": "",
+      "created": "2026-11-10 11:40:57",
+      "updated": "2026-11-10 11:40:57"
+    },
+    {
+      "id": "T5",
+      "title": "Repurpose feature: rearrange old audio into a new session (deferred scope)",
+      "status": "todo",
+      "priority": 4,
+      "owner": "any",
+      "est_usd": 6.0,
+      "depends": [],
+      "notes": "",
+      "created": "2026-11-10 11:40:58",
+      "updated": "2026-11-10 11:40:58"
+    },
+    {
+      "id": "T6",
+      "title": "Run full pytest + end-to-end FINISH timing on Sam's real take; record in CLAUDE.md 0.6",
+      "status": "todo",
+      "priority": 2,
+      "owner": "codex",
+      "est_usd": 1.0,
+      "depends": [],
+      "notes": "",
+      "created": "2026-11-10 11:40:58",
+      "updated": "2026-11-10 11:40:58"
+    }
+  ],
+  "spend": [],
+  "log": [
+    {
+      "t": "2026-11-10 11:40:57",
+      "who": "claude",
+      "msg": "added T1: Test YouTube upload with Sam's real Google account (private-lock limitation shown)"
+    },
+    {
+      "t": "2026-11-10 11:40:57",
+      "who": "claude",
+      "msg": "added T2: Update CLAUDE.md Module C to match shipped mastering (-21 LUFS, light chain)"
+    },
+    {
+      "t": "2026-11-10 11:40:57",
+      "who": "claude",
+      "msg": "added T3: Auto-edit: handle shorter induction-phase marker pauses"
+    },
+    {
+      "t": "2026-11-10 11:40:57",
+      "who": "claude",
+      "msg": "added T4: Review UI: flub-cut proposals Sam can accept/undo before render"
+    },
+    {
+      "t": "2026-11-10 11:40:58",
+      "who": "claude",
+      "msg": "added T5: Repurpose feature: rearrange old audio into a new session (deferred scope)"
+    },
+    {
+      "t": "2026-11-10 11:40:58",
+      "who": "claude",
+      "msg": "added T6: Run full pytest + end-to-end FINISH timing on Sam's real take; record in CLAUDE.md 0.6"
+    },
+    {
+      "t": "2026-11-10 11:40:58",
+      "who": "claude",
+      "msg": "T3 status=doing, owner=codex"
+    },
+    {
+      "t": "2026-11-10 11:41:06",
+      "who": "claude",
+      "msg": "T3 status=todo"
+    }
+  ]
+}
