@@ -5,7 +5,13 @@ import numpy as np
 import pytest
 
 from core.auto_edit import AutoEditConfig, auto_edit, find_markers, shape_pauses
-from core.config import load_render_config
+from core.config import (
+    DEFAULT_INDUCTION_END_S,
+    DEFAULT_INDUCTION_MARKER_PAUSE_S,
+    DEFAULT_INDUCTION_MIN_START_S,
+    DEFAULT_MARKER_PAUSE_S,
+    load_render_config,
+)
 from core.edl import EditList
 from core.vad import detect_pauses, detect_speech
 from synth import SR, phrase, room_tone
@@ -126,7 +132,8 @@ def test_none_induction_pause_keeps_normal_marker_length():
     assert [p.new_length for p in pauses if p.kind == "marker"] == [10.0]
 
 
-def test_induction_boundaries_include_180_but_exclude_720_and_need_full_take():
+def test_induction_boundaries_and_short_take_guard():
+    """Use the measured window only for a complete-length take."""
     at_start = shape_pauses([(170.0, 171.0), (180.0, 181.0), (190.0, 191.0)],
                             800.0, AutoEditConfig(), markers=[1])
     assert [p.new_length for p in at_start if p.kind == "marker"] == [5.0]
@@ -164,6 +171,14 @@ def test_render_config_exposes_induction_marker_settings():
     assert auto.induction_marker_pause_s == cfg.induction_marker_pause_s
     assert auto.induction_end_s == cfg.induction_end_s
     assert auto.induction_min_start_s == cfg.induction_min_start_s
+
+
+def test_auto_edit_defaults_use_shared_pause_defaults():
+    cfg = AutoEditConfig()
+    assert cfg.marker_pause_s == DEFAULT_MARKER_PAUSE_S
+    assert cfg.induction_marker_pause_s == DEFAULT_INDUCTION_MARKER_PAUSE_S
+    assert cfg.induction_end_s == DEFAULT_INDUCTION_END_S
+    assert cfg.induction_min_start_s == DEFAULT_INDUCTION_MIN_START_S
 
 
 def test_prepare_uses_caller_render_config(tmp_path, monkeypatch):
