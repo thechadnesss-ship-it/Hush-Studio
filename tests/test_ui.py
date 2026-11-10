@@ -210,6 +210,21 @@ def test_review_shows_lost_sound_before_render(app):
     dlg.grab().save(str(SHOTS / "ui_review_lost.png"))
 
 
+def test_review_has_a_play_button_for_every_lost_spot(app):
+    """T8 review round 2: all recorded spots (up to the 200 cap) are playable, none hidden behind '+N more'."""
+    from PyQt6.QtWidgets import QPushButton
+    from core.capture import MAX_LOST_SPOTS
+    times = [float(i * 3) for i in range(MAX_LOST_SPOTS)]
+    dlg = _review({"input_overflows": 0, "dropped_blocks": 0, "lost_buffers": 500,
+                   "clipped_samples": 0, "lost_at_s": times})
+    dlg.show()
+    pump(app, 0.1)
+    btns = [dlg.lost_row.itemAt(i).widget() for i in range(dlg.lost_row.count())]
+    btns = [b for b in btns if isinstance(b, QPushButton)]
+    assert len(btns) == MAX_LOST_SPOTS and not dlg.lost_strip.isHidden()
+    assert "lost 500 times" in dlg.check.text() and "scroll" in dlg.check.text()
+
+
 def test_review_check_for_a_clean_take_and_an_import(app):
     ok = _review({"input_overflows": 0, "dropped_blocks": 0, "clipped_samples": 0, "lost_at_s": []})
     assert ok.check.text() == "Recording check: no lost sound, no clipping." and not ok.check.isHidden()
