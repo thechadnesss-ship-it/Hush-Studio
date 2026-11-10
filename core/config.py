@@ -32,6 +32,10 @@ class RenderConfig:
     seam_fade_ms: int = 1500
     polish: bool = False             # Studio polish (core/polish.py), chosen per session in review
     target_lufs: float = -21.0
+    marker_pause_s: float = 10.0
+    induction_marker_pause_s: float | None = 5.0
+    induction_end_s: float = 720.0
+    induction_min_start_s: float = 180.0
 
     def __post_init__(self) -> None:
         if self.fit_policy not in FIT_POLICIES:
@@ -65,6 +69,10 @@ class RenderConfig:
 
     def as_dict(self) -> dict:
         return asdict(self)
+
+    def auto_edit_config(self):
+        from .auto_edit import AutoEditConfig
+        return AutoEditConfig.from_render_config(self)
 
 
 def load_render_config(path: str | Path = DEFAULT_RENDER_TOML) -> RenderConfig:

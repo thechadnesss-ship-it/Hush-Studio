@@ -94,10 +94,13 @@ def denoise(session: Session, x: np.ndarray, denoiser: Denoiser | None = None,
 
 
 def prepare(session: Session, raw: np.ndarray | None, clean: np.ndarray,
-            ear_events: list[EarEvent] | None = None, auto: AutoEditConfig = AutoEditConfig(),
+            ear_events: list[EarEvent] | None = None, auto: AutoEditConfig | None = None,
             marker_template: np.ndarray | None = None) -> EditList:
     """Automatic edit list. `ear_events` come from the live guard during REC; for an imported
     take the ear is run over the raw audio now (same detector, offline)."""
+    if auto is None:
+        from .config import load_render_config
+        auto = load_render_config().auto_edit_config()
     if ear_events is None:
         if raw is None:
             raise ValueError("need the raw take (or the live ear events) to find planes")

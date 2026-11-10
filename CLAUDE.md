@@ -84,8 +84,10 @@ makes speaking hard → "Listen back (last 15 s)" while paused instead.
   markers are found per session without a template (the one short isolated utterance repeating
   near-identically: 0.86 similarity vs 0.42 for normal speech). Other pauses keep their length but
   become digital silence; lead 0.1 s, tail ≤ 13 s, cap 15 s. On her raw take: 91 markers, 72%
-  digital silence (her edit: 71%). Not automated: her occasional shorter induction-phase marker
-  pauses, and flub cuts (Sam does those in review).
+  digital silence (her edit: 71%). Induction markers from 180 s through 720 s use a measured 5 s
+  replacement on the real take (11 markers); the remaining 80 markers keep the measured 10 s
+  replacement. Short/synthetic takes retain the normal marker behavior. Flub cuts remain manual
+  (Sam does those in review).
 - **FINISH speed on her real take (37:30 edited → exact 8 h, 4-core i5-6500): ≈ 15 s.** Parallel AAC
   encode split at digital-silence pauses (5.5 s vs 11.3 s), and an encode-free `exact` tail: the
   session's first frames up to a ≥ 1 s pause, padded with cached silence frames, so the video ends

@@ -23,3 +23,9 @@ aac_coder = "fast"
 # Mastering
 seam_fade_ms = 1500
 target_lufs = -21.0         # matches Sam's edited takes / back catalogue (measured), not -14
+
+# Auto-edit pause shaping, measured against Sam's Riverside take (2026-11-10).
+marker_pause_s = 10.0
+induction_marker_pause_s = 5.0
+induction_end_s = 720.0       # shorter marker pauses through the first 12 minutes
+induction_min_start_s = 180.0 # markers before this are normal; protects short/synthetic takes

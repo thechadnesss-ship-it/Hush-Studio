@@ -98,6 +98,31 @@ def test_induction_markers_use_shorter_pause_but_normal_markers_do_not():
     assert [p.new_length for p in markers] == [5.0, 5.0, 10.0]
 
 
+def test_induction_is_per_marker_and_has_explicit_boundaries():
+    speech = [(100.0, 101.0), (104.0, 105.0), (120.0, 121.0),
+              (180.0, 181.0), (184.0, 185.0), (200.0, 201.0),
+              (720.0, 721.0), (724.0, 725.0), (730.0, 731.0)]
+    pauses = shape_pauses(speech, 731.0, AutoEditConfig(), markers=[1, 3, 7])
+    markers = [p for p in pauses if p.kind == "marker"]
+    assert [p.new_length for p in markers] == [10.0, 5.0, 10.0]
+
+
+def test_marker_in_cut_is_not_shaped():
+    speech = [(200.0, 201.0), (204.0, 205.0), (210.0, 211.0),
+              (400.0, 401.0), (404.0, 405.0), (410.0, 411.0)]
+    pauses = shape_pauses(speech, 420.0, AutoEditConfig(), cuts=[(203.0, 206.0)], markers=[1, 4])
+    markers = [p for p in pauses if p.kind == "marker"]
+    assert len(markers) == 1
+    assert markers[0].start == 401.0
+
+
+def test_none_induction_pause_keeps_normal_marker_length():
+    cfg = AutoEditConfig(induction_marker_pause_s=None)
+    speech = [(200.0, 201.0), (204.0, 205.0), (210.0, 211.0)]
+    pauses = shape_pauses(speech, 220.0, cfg, markers=[1])
+    assert [p.new_length for p in pauses if p.kind == "marker"] == [10.0]
+
+
 @pytest.mark.skipif(not RAW.exists(), reason="Sam's raw reference take not present")
 def test_real_take_reproduces_her_edit():
     from core.session import load_mono_48k
