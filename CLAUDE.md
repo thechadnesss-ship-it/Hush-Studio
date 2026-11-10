@@ -129,6 +129,11 @@ makes speaking hard → "Listen back (last 15 s)" while paused instead.
   listed first, "Copy to flash drive" after) with logs, system info, settings (secret keys dropped, values redacted), and for the
   chosen take capture.json + the `core.diagnostics` stage report. Audio only as ticked ~6 s clips around clipping / dropouts /
   lost sound (none ticked by default; D06: nothing is uploaded). `python -m core.diagnostics bundle.zip` prints the same report.
+- **Takes library (T10, D04, `core/takes.py`, `ui/takes.py`):** one folder per take in `Takes/` (was `sessions/`; renamed once at
+  startup, nothing deleted), each with `take.json` (name, created, notes, uploaded). Folder name stays the timestamp; rename only edits
+  `name`. Status derived from files: raw → edited (edits.json) → rendered (output_*h.mp4) → uploaded (take.json). Takes screen (header
+  "Takes"): search, rename, duplicate (no rendered video), delete (confirmed), Show in Explorer, open in editor / render, export/import
+  `.hushtake` zip. Older folders without take.json are listed too.
 - **Live capture (`core/capture.py`):** callback only enqueues; full queue drops + counts (a
   simulated faster-than-real-time source uses backpressure instead). USB mic verified at 48 kHz.
 

@@ -253,3 +253,22 @@ def test_review_check_for_a_clean_take_and_an_import(app):
     clip = _review({"input_overflows": 0, "dropped_blocks": 0, "clipped_samples": 1500, "lost_at_s": []})
     assert "clipped (1,500 samples)" in clip.check.text() and "lost" not in clip.check.text()
     assert _review(None).check.isHidden()                 # imported take: no capture data
+
+
+def test_takes_dialog_lists_and_manages(app, tmp_path):
+    from core.takes import TakeLibrary
+    from ui.takes import TakesDialog
+    import soundfile as sf
+    lib = TakeLibrary(tmp_path / "Takes")
+    for n in ("Alpha", "Beta"):
+        d = lib.new_dir(n)
+        sf.write(d / "raw.flac", np.zeros(4800, np.float32), 48000)
+    dlg = TakesDialog(lib)
+    assert dlg.table.rowCount() == 2
+    dlg.search.setText("alp")
+    assert dlg.table.rowCount() == 1 and dlg.table.item(0, 0).text() == "Alpha"
+    dlg.table.selectRow(0)
+    dlg.duplicate()
+    assert any(t.name == "Alpha (copy)" for t in lib.list())
+    dlg.search.setText("")
+    assert dlg.table.rowCount() == 3
