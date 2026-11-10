@@ -30,6 +30,16 @@ Never commit `engine_plan.json` on a task branch; it is committed on `main` only
   review, then Merge & finish). Merge `main` into your branch at the start of a task.
 - Do not both edit the same zone at once; stay inside the task's zone (see the plan's zones).
 
+## Review and hand-back
+- A reviewer does not change code. It records the outcome with the plan tool (full path, see above):
+  clean: `--set <ID> status=Review notes="Review clean: ..."`;
+  problems: `--request-changes <ID> "1) ... 2) ..." --by <Claude|Codex>`. That saves the findings on the task and sets
+  status `Changes requested`.
+- You cannot message the other agent. Never tell Sam "handed back" unless `--request-changes` succeeded; Sam presses
+  **Send back** in Narthen Control, which reopens the owner on the same branch with the findings.
+- The owner fixes only the listed findings, re-runs Verify and the tests, then `--set <ID> status=Review notes="what was fixed"`
+  and a `--log` entry. The task is then re-reviewed.
+
 ## Working protocol
 - Start: `--next <your name>`, or the task Sam started for you. Read `--show <ID>` and the task's Key files; do not explore the whole repo.
 - Respect the usage budget: if `--next` reports you are over budget for the tier, stop and tell Sam.
