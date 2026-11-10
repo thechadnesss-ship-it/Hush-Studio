@@ -91,6 +91,9 @@ makes speaking hard → "Listen back (last 15 s)" while paused instead.
   session's first frames up to a ≥ 1 s pause, padded with cached silence frames, so the video ends
   in a sentence break at exactly the target length. Import-only costs (live REC does these during
   recording): noise removal ≈ 20 s and the ear ≈ 14 s for 33 min.
+- **Flub proposals (T4):** `auto_edit.find_flubs` proposes a cut where a ≥ 1.5 s phrase is said again within 2 phrases / 8 s
+  (feature similarity ≥ 0.88; threshold unmeasured on real takes). They are `Cut(reason="flub", proposed=True, keep=True)`:
+  listed in review, **not applied** until Sam presses Accept (`keep=False`) or Undo; render honours `keep`. Plane cuts win on overlap.
 - **Denoise:** `deepfilternet` pip has no Py3.12 Windows wheel → the official `deep-filter.exe`
   (v0.5.6, 26 912 256 bytes, sha256 75e11fa1…7915) in `tools/deepfilter/` (gitignored; installed by
   the user). On Sam's real voice + synthetic noise: plane in pauses −33 dB (gate −15), plane under

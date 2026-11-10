@@ -30,6 +30,13 @@ class Cut:
     keep: bool = False          # Sam's "Keep anyway": the cut is listed but not applied
     note: str = ""
     id: str = field(default_factory=_id)
+    proposed: bool = False      # auto-proposal Sam has not decided on yet; not applied (keep stays True)
+
+    def accept(self) -> None:
+        self.proposed, self.keep = False, False
+
+    def undo(self) -> None:
+        self.proposed, self.keep = False, True
 
     def __post_init__(self):
         if self.end <= self.start:
