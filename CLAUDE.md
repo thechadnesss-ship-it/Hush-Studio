@@ -1,9 +1,10 @@
 # CLAUDE.md — Hush Studio (formerly PikaMeditate Studio; Design Doc v2: "Encode Once, Copy Forever")
 
 > **Two-agent workflow (Claude Code + Codex):** this file is the architectural source of truth;
-> `ops/state.json` (edited only via `python ops/control.py`) holds tasks, priorities and the subscription-usage budget
-> (live Claude + Codex 5 h / weekly usage; Claude works on `main`, Codex in worktree `../pika_meditate_codex` on branch `codex`);
-> Codex reads `AGENTS.md`. Start every session with `python ops/control.py list`.
+> the task plan (`Docs/Engine Build Plan/engine_plan.json`) is managed by **Narthen Control**
+> (repo `Narthen-Control`) and holds tasks, priorities, tiers, decisions and the usage budget. Each agent works on its
+> own task branch in its own worktree (`../hush-studio-claude`, `../hush-studio-codex`). `AGENTS.md` has the
+> protocol and the plan-tool commands; read it at the start of every session. (`ops/` is the old control app, being retired.)
 
 > **For Claude Code:** This is the architectural baseline. The #1 product requirement is
 > **render speed**. A session is a **recording of variable length (typically ~30 min)** that gets

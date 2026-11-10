@@ -1,30 +1,41 @@
-# AGENTS.md — Hush Studio (instructions for Codex; Claude Code reads CLAUDE.md)
+# AGENTS.md — Hush Studio (instructions for Claude Code and Codex)
 
 **Source of truth, in this order:**
 1. `CLAUDE.md` — architecture, product rules, measured decisions. Read it fully before changing code.
    The core rule: encode each unique media piece once, build the long video by stream-copy. Never
    re-encode the full-length output without Sam's sign-off.
-2. Tasks / priorities / budget — `python ops/control.py` (state lives in the **main checkout's**
-   `ops/state.json`; every worktree reads and writes that same file). Never edit the JSON by hand.
+2. The plan — `Docs/Engine Build Plan/engine_plan.json`, managed by **Narthen Control**
+   (repo `Narthen-Control`, local folder `C:\Users\chadj\Narthen-Control`). Tasks, priorities, tiers, decisions.
+   Never edit the JSON by hand; use the plan tool below. The plan lives only in the main folder; every worktree
+   reads and writes that same file, and the plan tool finds it for you.
 3. The code and `pytest` (`.venv\Scripts\python -m pytest -q`; must stay green).
 
-## Git: who works where
-- **Claude Code** works in `C:\Users\chadj\pika_meditate` on branch `main`.
-- **Codex** works in the worktree `C:\Users\chadj\pika_meditate_codex` on branch `codex`. Never commit to `main`.
-- Codex: commit small and often on `codex`. Sam (or Claude) merges `codex` → `main` after review;
-  Codex pulls changes with `git merge main` at the start of each task.
-- Don't both edit the same module at once: split by owner (see the task list), and say in `notes` which files a task touches.
+## Plan tool
+Always call it by full path (it is not inside this repo), e.g.:
 
-## Working protocol (Claude and Codex both follow this)
-- Set `AGENT=codex` (Claude uses `AGENT=claude`) so the log shows who did what.
-- Start: `python ops/control.py list`, then `python ops/control.py next --owner codex` to claim work.
-  `next` refuses with `STOP` when your subscription usage is at/over the caps (default weekly 90%, 5 h 95%):
-  stop and tell Sam, don't work around it. `python ops/control.py usage` shows live numbers.
-- Don't touch a task whose status is `doing` under another owner. Stay inside the claimed task's scope;
-  new work you discover → `add` a task, don't just do it.
-- Finish: tests green, commit on your branch, then `python ops/control.py done <id> --note "what changed, files"`.
-  The app records how much weekly allowance the task consumed automatically. Anything risky or needing
-  Sam's judgment → `set <id> --status review --owner sam`.
-- If your weekly usage is high, prefer small, well-scoped tasks and say so in the task notes when you're blocked by budget.
+    py "C:\Users\chadj\Narthen-Control\Tools\build_engine_plan.py" --show T7
+    py "C:\Users\chadj\Narthen-Control\Tools\build_engine_plan.py" --next Claude      # or Codex
+    py "C:\Users\chadj\Narthen-Control\Tools\build_engine_plan.py" --set T7 status=Review notes="what changed; how verified"
+    py "C:\Users\chadj\Narthen-Control\Tools\build_engine_plan.py" --log Claude "summary" --tasks T7
+
+If `NARTHEN_PROJECT` is not already set in your shell, set it to `C:\Users\chadj\pika_meditate` first.
+Never commit `engine_plan.json` on a task branch; it is committed on `main` only.
+
+## Git: who works where
+- One task per branch, `<agent>/<task id>-<slug>` (Narthen Control creates it when Sam presses Start).
+- Each agent works in its own worktree beside the project folder: `C:\Users\chadj\hush-studio-claude` and
+  `C:\Users\chadj\hush-studio-codex`. Narthen Control creates them on first use. Do not work in the main
+  folder unless the task says so.
+- Never commit to `main` from a task branch. Sam merges to `main` after review (Narthen Control: Run code
+  review, then Merge & finish). Merge `main` into your branch at the start of a task.
+- Do not both edit the same zone at once; stay inside the task's zone (see the plan's zones).
+
+## Working protocol
+- Start: `--next <your name>`, or the task Sam started for you. Read `--show <ID>` and the task's Key files; do not explore the whole repo.
+- Respect the usage budget: if `--next` reports you are over budget for the tier, stop and tell Sam.
+- Stay inside the claimed task's scope. New work you discover becomes a new task in the plan, not extra work in this one.
+- Finish: acceptance criteria met, Verify command run, tests green, commit on your branch, then
+  `--set <ID> status=Review notes="..."` and a `--log` entry. Anything needing Sam's judgment: add a decision, or set `status=Blocked` with the reason in notes.
 - Facts learned (measurements, decisions) go into the matching section of `CLAUDE.md`, not into chat.
-- Sam's dashboard: double-click `ops\Control.bat` (live Claude + Codex usage, task board, caps).
+- Deleting files, rewriting git history and changing `CLAUDE.md`'s core rules need Sam's approval.
+- Sam's control panel: the **Narthen Control** icon on her desktop.
