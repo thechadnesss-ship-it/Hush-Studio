@@ -20,6 +20,12 @@ from dataclasses import dataclass
 import numpy as np
 from scipy import signal
 
+from .config import (
+    DEFAULT_INDUCTION_END_S,
+    DEFAULT_INDUCTION_MARKER_PAUSE_S,
+    DEFAULT_INDUCTION_MIN_START_S,
+    DEFAULT_MARKER_PAUSE_S,
+)
 from .edl import Pause
 
 
@@ -28,7 +34,10 @@ class AutoEditConfig:
     silence_pauses: bool = True
     marker_detect: bool = True
     flub_detect: bool = True
-    marker_pause_s: float = 10.0       # her edit: 9–13 s, median ≈ 10
+    marker_pause_s: float = DEFAULT_MARKER_PAUSE_S
+    induction_marker_pause_s: float | None = DEFAULT_INDUCTION_MARKER_PAUSE_S
+    induction_end_s: float = DEFAULT_INDUCTION_END_S
+    induction_min_start_s: float = DEFAULT_INDUCTION_MIN_START_S
     marker_len_s: tuple[float, float] = (0.6, 1.8)
     marker_sim: float = 0.80           # detection threshold vs the marker template
     cluster_sim: float = 0.85          # "near-identical" for discovering the marker
@@ -41,6 +50,16 @@ class AutoEditConfig:
     flub_lookahead: int = 2            # restart within this many phrases
     flub_max_gap_s: float = 8.0
     flub_pad_s: float = 0.1
+
+    @classmethod
+    def from_render_config(cls, cfg) -> "AutoEditConfig":
+        """Build the pause-shaping settings from the application's render config."""
+        return cls(
+            marker_pause_s=cfg.marker_pause_s,
+            induction_marker_pause_s=cfg.induction_marker_pause_s,
+            induction_end_s=cfg.induction_end_s,
+            induction_min_start_s=cfg.induction_min_start_s,
+        )
 
 
 # ----------------------------------------------------------------------------- marker features
@@ -125,8 +144,8 @@ def shape_pauses(speech: list[tuple[float, float]], duration: float, cfg: AutoEd
     """Pause entries for the edit list. `markers` = indices into `speech` to remove."""
     cuts = cuts or []
     mset = set(markers or [])
-    kept = [p for i, p in enumerate(speech) if i not in mset]
-    marker_spans = [speech[i] for i in sorted(mset)]
+    kept = [(i, p) for i, p in enumerate(speech) if i not in mset]
+    marker_spans = sorted(speech[i] for i in mset if 0 <= i < len(speech))
 
     def overlaps_cut(a: float, b: float) -> bool:
         return any(a < ce and cs < b for cs, ce in cuts)
@@ -134,22 +153,33 @@ def shape_pauses(speech: list[tuple[float, float]], duration: float, cfg: AutoEd
     out: list[Pause] = []
     if not kept:
         return out
-    if kept[0][0] > cfg.lead_s:
-        out.append(Pause(0.0, kept[0][0], cfg.lead_s, kind="lead"))
-    for (_, a_end), (b_start, _) in zip(kept, kept[1:]):
+    if kept[0][1][0] > cfg.lead_s:
+        out.append(Pause(0.0, kept[0][1][0], cfg.lead_s, kind="lead"))
+    marker_pos = 0
+    induction_enabled = duration >= cfg.induction_end_s
+    for (_, (_, a_end)), (_, (b_start, _)) in zip(kept, kept[1:]):
         if b_start - a_end <= 0 or overlaps_cut(a_end, b_start):
             continue
-        has_marker = any(a_end <= ms and me <= b_start for ms, me in marker_spans)
+        while marker_pos < len(marker_spans) and marker_spans[marker_pos][1] <= a_end:
+            marker_pos += 1
+        gap_marker = (marker_spans[marker_pos]
+                      if marker_pos < len(marker_spans)
+                      and marker_spans[marker_pos][1] <= b_start else None)
         length = b_start - a_end
-        if has_marker:
-            out.append(Pause(a_end, b_start, cfg.marker_pause_s, kind="marker"))
+        if gap_marker is not None:
+            marker_start = gap_marker[0]
+            marker_pause_s = cfg.marker_pause_s
+            if (induction_enabled and cfg.induction_marker_pause_s is not None
+                    and cfg.induction_min_start_s <= marker_start < cfg.induction_end_s):
+                marker_pause_s = cfg.induction_marker_pause_s
+            out.append(Pause(a_end, b_start, marker_pause_s, kind="marker"))
         elif length > cfg.cap_pause_s:
             out.append(Pause(a_end, b_start, cfg.cap_pause_s))
         elif cfg.silence_pauses:
             out.append(Pause(a_end, b_start, length))
-    tail = duration - kept[-1][1]
+    tail = duration - kept[-1][1][1]
     if tail > 0:
-        out.append(Pause(kept[-1][1], duration, min(tail, cfg.tail_s), kind="tail"))
+        out.append(Pause(kept[-1][1][1], duration, min(tail, cfg.tail_s), kind="tail"))
     return out
 
 

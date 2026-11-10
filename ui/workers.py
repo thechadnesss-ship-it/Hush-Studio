@@ -22,9 +22,11 @@ class PrepareWorker(QThread):
     done = pyqtSignal(object, object)     # EditList, clean ndarray
     failed = pyqtSignal(str)
 
-    def __init__(self, session: Session, import_src: Path | None = None, recording=None, parent=None):
+    def __init__(self, session: Session, import_src: Path | None = None, recording=None,
+                 cfg: RenderConfig | None = None, parent=None):
         super().__init__(parent)
         self.session, self.import_src, self.recording = session, import_src, recording
+        self.cfg = cfg or RenderConfig()
 
     def run(self):
         try:
@@ -35,12 +37,13 @@ class PrepareWorker(QThread):
                 self.stage.emit("Removing background noise…")
                 clean, backend = denoise(self.session, raw)
                 self.stage.emit("Listening for planes and finding pauses…")
-                edl = prepare(self.session, raw, clean)
+                edl = prepare(self.session, raw, clean, render_cfg=self.cfg)
             else:
                 rec = self.recording
                 clean = rec.clean
                 self.stage.emit("Finding pauses…")
-                edl = prepare(self.session, None, clean, ear_events=rec.ear_events)
+                edl = prepare(self.session, None, clean, ear_events=rec.ear_events,
+                              render_cfg=self.cfg)
             self.stage.emit(f"Ready to review ({time.perf_counter() - t0:.0f}s)")
             self.done.emit(edl, clean)
         except Exception:
