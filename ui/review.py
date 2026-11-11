@@ -60,6 +60,7 @@ class ReviewDialog(QDialog):
         self.quality_check.setVisible(source is not None or quality is not None or quality_unavailable)
         lay.addWidget(self.quality_check)
         self._quality_worker = None
+        self._detached_quality_workers = []
         if quality_unavailable and source is None and quality is None:
             self._show_quality(None)
         self.dropout_row = QHBoxLayout()
@@ -206,8 +207,17 @@ class ReviewDialog(QDialog):
             except (TypeError, RuntimeError):
                 pass
             worker.setParent(None)
-            worker.finished.connect(worker.deleteLater)
+            self._detached_quality_workers.append(worker)
+            worker.finished.connect(self._release_quality_worker)
+        elif worker is not None:
+            worker.deleteLater()
         self._quality_worker = None
+
+    def _release_quality_worker(self):
+        worker = self.sender()
+        if worker in self._detached_quality_workers:
+            self._detached_quality_workers.remove(worker)
+        worker.deleteLater()
 
     def done(self, result: int) -> None:
         self._detach_quality_worker()

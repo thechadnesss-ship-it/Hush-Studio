@@ -546,7 +546,8 @@ class MainWindow(QMainWindow):
     def _recorded(self, result):
         w = PrepareWorker(self.session, recording=result, cfg=self._cfg())
         w.stage.connect(self.message.setText)
-        self._run(w, lambda edl, clean, source: self._prepared(edl, clean, source=source))
+        self._run(w, lambda edl, clean, source: self._prepared(edl, clean, source=source,
+                                                               imported=False))
 
     # ================================================================== import
 
@@ -564,7 +565,8 @@ class MainWindow(QMainWindow):
         self.btn_open.hide()
         w = PrepareWorker(self.session, import_src=path, cfg=self._cfg())
         w.stage.connect(self.message.setText)
-        self._run(w, lambda edl, clean, source: self._prepared(edl, clean, source=source))
+        self._run(w, lambda edl, clean, source: self._prepared(edl, clean, source=source,
+                                                               imported=True))
 
     # ================================================================== review + render
 
@@ -575,7 +577,7 @@ class MainWindow(QMainWindow):
         except (OSError, ValueError, AttributeError):
             return None
 
-    def _prepared(self, edl, clean, quality=None, source=None):
+    def _prepared(self, edl, clean, quality=None, source=None, imported=False):
         self.edl, self.clean = edl, clean
         self._show_plan(edl.output_duration())
         self.timer.setText(_hms(edl.output_duration()))
@@ -583,8 +585,8 @@ class MainWindow(QMainWindow):
         self.companion.say("review")
         capture = self._capture_report()
         dlg = ReviewDialog(edl, clean, self, capture=capture, source=source, quality=quality,
-                           imported=capture is None,
-                           quality_unavailable=source is None)
+                           imported=imported,
+                           quality_unavailable=source is None and edl.source == "clean.wav")
         r = dlg.exec()
         if r == ReviewDialog.EDIT:
             self.open_editor()

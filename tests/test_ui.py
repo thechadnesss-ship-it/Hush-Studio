@@ -255,6 +255,36 @@ def test_review_check_for_a_clean_take_and_an_import(app):
     assert _review(None).check.isHidden()                 # imported take: no capture data
 
 
+def test_quality_worker_emits_report_and_prepare_worker_keeps_three_args(app, monkeypatch):
+    from core.audio_quality import QualityReport
+    from core.config import RenderConfig
+    from ui.workers import AudioQualityWorker, PrepareWorker
+    import ui.workers as workers
+
+    x, _ = speech_take(1.0, -24, seed=410)
+    reports = []
+    worker = AudioQualityWorker(x, x)
+    worker.done.connect(reports.append)
+    worker.start()
+    while worker.isRunning():
+        pump(app, 0.02)
+    pump(app, 0.05)
+    assert len(reports) == 1 and isinstance(reports[0], QualityReport)
+
+    edl = EditList(duration=1.0, sample_rate=SR)
+    monkeypatch.setattr(workers, "prepare", lambda *args, **kwargs: edl)
+    session = Session(Path.cwd())
+    recording = type("Recording", (), {"clean": x, "ear_events": []})()
+    args = []
+    prep = PrepareWorker(session, recording=recording, cfg=RenderConfig())
+    prep.done.connect(lambda *values: args.append(values))
+    prep.start()
+    while prep.isRunning():
+        pump(app, 0.02)
+    pump(app, 0.05)
+    assert len(args) == 1 and len(args[0]) == 3
+
+
 def test_takes_dialog_lists_and_manages(app, tmp_path):
     from core.takes import TakeLibrary
     from ui.takes import TakesDialog
