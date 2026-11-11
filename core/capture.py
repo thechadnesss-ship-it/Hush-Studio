@@ -70,12 +70,31 @@ class MicSource:
                 self.overflows += 1
             on_block(indata[:, 0].copy())          # copy + enqueue only
 
-        self.stream = sd.InputStream(device=self.device, samplerate=SR, channels=1, dtype="float32",
-                                     blocksize=BLOCK, callback=cb)
-        self.stream.start()
+        from .mic_select import candidates
+        tries: list = []
+        try:
+            tries = [(c.device, sd.WasapiSettings(exclusive=True) if c.exclusive else None, c.label)
+                     for c in candidates(list(sd.query_devices()), list(sd.query_hostapis()), self.device)]
+        except Exception:
+            log.exception("mic selection failed; using the system default")
+        tries.append((self.device, None, "system default"))      # last resort: the old behaviour
+        mode, err = "", None
+        for dev, extra, label in tries:
+            try:
+                self.stream = sd.InputStream(device=dev, samplerate=SR, channels=1, dtype="float32",
+                                             blocksize=BLOCK, callback=cb, extra_settings=extra)
+                self.stream.start()
+                mode = label
+                break
+            except Exception as e:
+                err = e
+                self.stream = None
+                log.info("could not open %s (%s): %s", dev, label, e)
+        if self.stream is None:
+            raise err
         try:
             d = sd.query_devices(self.stream.device)
-            self.info = {"device": d["name"], "host_api": sd.query_hostapis(d["hostapi"])["name"],
+            self.info = {"device": d["name"], "host_api": sd.query_hostapis(d["hostapi"])["name"], "mode": mode,
                          "device_default_rate": d["default_samplerate"], "stream_rate": self.stream.samplerate}
             log.info("input opened: %s [%s] %s Hz", self.info["device"], self.info["host_api"], self.info["stream_rate"])
         except Exception:
