@@ -1,8 +1,16 @@
 """Background noise removal: the built-in spectral gate (DeepFilterNet tested when installed)."""
 import numpy as np
 import pytest
+import soundfile as sf
 
-from core.denoise import PassThrough, SpectralGate, SpectralGateConfig, deepfilter_exe, denoise_array
+from core.denoise import (
+    PassThrough,
+    SpectralGate,
+    SpectralGateConfig,
+    deepfilter_exe,
+    deepfilter_input_gain_db,
+    denoise_array,
+)
 from core.vad import detect_speech
 from synth import SR, colored_noise, speech_take
 
@@ -66,6 +74,58 @@ def test_realtime_speed(noisy):
     t0 = time.perf_counter()
     denoise_array(y, SpectralGate())
     assert time.perf_counter() - t0 < 60.0 / 10          # ≥ 10x real time
+
+
+def test_deepfilter_gain_stage_is_relative_to_quiet_input():
+    normal_peak = 10 ** (-9.5 / 20)
+    quiet_peak = 10 ** (-29.5 / 20)
+    assert deepfilter_input_gain_db(np.array([normal_peak], dtype=np.float32)) == pytest.approx(0.0)
+    assert deepfilter_input_gain_db(np.array([quiet_peak], dtype=np.float32)) == pytest.approx(17.5, abs=0.1)
+    assert deepfilter_input_gain_db(np.zeros(100, dtype=np.float32)) == 0.0
+
+
+def test_deepfilter_array_stages_the_cli_input(monkeypatch, tmp_path):
+    seen = []
+
+    def fake_deepfilter(src, dst, attenuation_limit_db=100.0, post_filter=False):
+        audio, sr = sf.read(src, dtype="float32")
+        seen.append(float(np.abs(audio).max(initial=0.0)))
+        sf.write(dst, audio, sr, subtype="FLOAT")
+        return dst
+
+    monkeypatch.setattr("core.denoise.deepfilter_file", fake_deepfilter)
+    quiet = np.full(SR * 2, 10 ** (-29.5 / 20), dtype=np.float32)
+    from core.denoise import deepfilter_array
+    denoised = deepfilter_array(quiet, SR, workers=1, work_dir=tmp_path)
+    assert seen and 10 ** (-13 / 20) < seen[0] < 10 ** (-11 / 20)
+    assert len(denoised) == len(quiet)
+
+
+def test_quiet_take_keeps_phrase_endings_and_has_no_dropouts():
+    """A take 20 dB below normal must keep the same relative VAD/edit path."""
+    from core.audio_quality import analyze
+    from core.master import MasterConfig, master_array
+
+    normal, truth = speech_take(60.0, -24, seed=122)
+    quiet = (normal * np.float32(0.1)).astype(np.float32)
+    normal_sp = detect_speech(normal, SR)
+    quiet_sp = detect_speech(quiet, SR)
+    clean = denoise_array(quiet, SpectralGate())
+    clean_sp = detect_speech(clean, SR)
+
+    assert len(normal_sp) == len(quiet_sp) == len(clean_sp) == len(truth)
+    for normal_region, quiet_region, clean_region in zip(normal_sp, quiet_sp, clean_sp):
+        assert quiet_region[0] == pytest.approx(normal_region[0], abs=0.02)
+        assert clean_region[0] == pytest.approx(quiet_region[0], abs=0.02)
+        assert clean_region[1] >= quiet_region[1] - 0.05
+
+    report = analyze(quiet, clean, warn_true_peak=False)
+    assert report.dropout_count == 0
+    assert report.distortion_db < -10.0
+    mastered, master_report = master_array(clean, SR, MasterConfig(target_lufs=-21.0))
+    assert master_report.gain_db < 30.0
+    assert master_report.output_lufs == pytest.approx(-21.0, abs=0.5)
+    assert np.isfinite(mastered).all()
 
 
 REAL_RAW = __import__("pathlib").Path(__file__).resolve().parent.parent / "riverside_edit_- 9-10 nov_25_feb.wav"
