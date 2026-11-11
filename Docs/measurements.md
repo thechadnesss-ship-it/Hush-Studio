@@ -19,7 +19,7 @@ makes speaking hard → "Listen back (last 15 s)" while paused instead.
 - **Video intro:** `AssetCache.intro_video()` re-encodes the card once with the same x264 recipe
   as the black loop → byte-identical avcC → one H.264 track. Black frames are re-timed to 1 s
   each (`black_frame_s`, VFR) → 8 h output ≈ 155 MB instead of ≈ 218 MB at 30 fps.
-- **Real-asset render:** 33:14 take + 30 s card → exact 8h 00m 00s in ≈ 5 s (incl. tail encode).
+- **Real-asset render (re-measured 2026-11-11, T6):** Sam's 33:06.66 take + the real intro card → exact **8 h 00 m 00 s**. Import 16.81 s, DeepFilterNet denoise 176.96 s, edit preparation 25.59 s; FINISH itself: apply edits 0.08 s, master/AAC encode 12.43 s, asset validation/build 12.22 s, native stream-copy render 2.94 s (**27.59 s FINISH**, **247.07 s end-to-end** including import/denoise/prepare). Output was 159,947,884 bytes and measured 28,800.0 s; 13 session loops plus a 998.997 s encode-free exact tail. (The prior ≈5 s figure was a cached/synthetic-style render measurement; this is the current real-take measurement.)
 - **Mastering:** vectorised BS.1770 meter (pyloudnorm is ~20 s per pass on 30 min). Digital-silence
   pauses push IIR filters into denormals (~100× slower) → a −200 dB dither avoids it. Sam's edit
   needs < 1 dB of gain; mastering 33 min ≈ 3 s.
