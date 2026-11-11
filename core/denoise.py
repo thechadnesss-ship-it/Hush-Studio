@@ -197,7 +197,7 @@ def deepfilter_file(src: Path, dst: Path, attenuation_limit_db: float = 100.0,
             args.append("--pf")
         args.append(str(src))
         flags = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
-        proc = subprocess.run(args, capture_output=True, text=True, **flags)
+        proc = subprocess.run(args, capture_output=True, text=True, stdin=subprocess.DEVNULL, **flags)
         if proc.returncode != 0:
             raise RuntimeError(f"deep-filter failed ({proc.returncode}): {proc.stderr[-1500:]}")
         produced = list(Path(td).glob("*.wav"))
@@ -226,15 +226,38 @@ DFN_PREROLL_S = 3.0       # context fed before each part, then discarded: joins 
 DFN_TAIL_PAD_S = 0.1      # reflected audio fed after each part: the CLI's output is 30–40 ms short
 DFN_HEADROOM = 0.9        # the CLI writes 16-bit PCM, which hard-clips at ±1.0
 DFN_FLOOR_DBFS = -65.0    # white floor added to the CLI's input (it removes it again), see below
+DFN_TARGET_PEAK_DBFS = -12.0
+DFN_MAX_STAGE_GAIN_DB = 24.0
 _DFN_FLOOR = np.random.default_rng(7).standard_normal(1 << 20).astype(np.float32)
+
+
+def deepfilter_input_gain_db(x: np.ndarray, context: np.ndarray | None = None,
+                             target_dbfs: float = DFN_TARGET_PEAK_DBFS) -> float:
+    """Return a safe, relative gain for DeepFilterNet's input.
+
+    The model has an absolute operating range. A quiet take can therefore make it treat the
+    last, decaying part of a word as noise even though the same phrase at a normal level
+    survives. Stage the model input toward a useful peak, but cap the gain so near-silence
+    cannot become a loud noise source.
+    """
+    x = np.asarray(x, dtype=np.float32).reshape(-1)
+    peak = float(np.abs(x).max(initial=0.0))
+    if context is not None:
+        peak = max(peak, float(np.abs(np.asarray(context, dtype=np.float32)).max(initial=0.0)))
+    if peak <= 0.0:
+        return 0.0
+    target = 10 ** (target_dbfs / 20)
+    return float(np.clip(20 * np.log10(target / peak), 0.0, DFN_MAX_STAGE_GAIN_DB))
 
 
 def deepfilter_array(x: np.ndarray, sr: int = SR, attenuation_limit_db: float = 100.0,
                      workers: int | None = None, work_dir: Path | None = None,
-                     context: np.ndarray | None = None) -> np.ndarray:
+                     context: np.ndarray | None = None,
+                     stage_gain_db: float | None = None) -> np.ndarray:
     """DeepFilterNet over an array, split at natural pauses and run on all cores at once
     (≈ 83 s single-process for 33 min on a 4-core i5). Returns float32 aligned to the input
-    and exactly its length.
+    and exactly its length. Quiet inputs are staged toward ``DFN_TARGET_PEAK_DBFS`` before the
+    CLI runs, then returned to their source level after denoising.
 
     Seamless joins (T7, measured on Sam's voice split mid-word): each part is fed with
     `DFN_PREROLL_S` of the audio before it (or `context`, the end of the previous live segment)
@@ -255,7 +278,16 @@ def deepfilter_array(x: np.ndarray, sr: int = SR, attenuation_limit_db: float = 
     pre = int(DFN_PREROLL_S * sr)
     ctx = np.zeros(0, np.float32) if context is None or pre == 0 else np.asarray(context, np.float32)[-pre:]
     peak = float(max(np.abs(x).max(initial=0.0), np.abs(ctx).max(initial=0.0)))
-    scale = np.float32(DFN_HEADROOM / peak if peak > DFN_HEADROOM else 1.0)
+    if stage_gain_db is None:
+        stage_gain_db = deepfilter_input_gain_db(x, ctx)
+    else:
+        stage_gain_db = float(np.clip(stage_gain_db, 0.0, DFN_MAX_STAGE_GAIN_DB))
+    stage_scale = np.float32(10 ** (stage_gain_db / 20))
+    # Protect the CLI after the quiet-take gain stage. The inverse scale is applied to the
+    # output below so denoising remains level-neutral for diagnostics and downstream mastering.
+    scale = np.float32(DFN_HEADROOM / peak if peak * stage_scale > DFN_HEADROOM else stage_scale)
+    # Keep the measured -65 dBFS floor needed for phrase tails. Raising it for a normal-level
+    # take makes digital-silence pauses noisier and regresses the validated dropout fix.
     floor = np.float32(10 ** (DFN_FLOOR_DBFS / 20))
     off = len(ctx)                                 # x starts here in the virtual stream [ctx, x]
 

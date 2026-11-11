@@ -26,7 +26,8 @@ from PyQt6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLay
 
 from core.app_info import APP_NAME, SETTINGS_ORG
 from core.asset_cache import AssetCache
-from core.config import DATA_ROOT, PROJECT_ROOT, TARGET_HOURS_OPTIONS, load_render_config
+from core.config import DATA_ROOT, PROJECT_ROOT, TARGET_HOURS_OPTIONS, browse_start_dir, load_render_config
+from core.intros import IntroError, IntroLibrary
 from core.renderer import TakeTooShortError, fmt_hms, fmt_mmss, plan_render
 from core.session import Session
 from core.takes import TakeLibrary, migrate_sessions_folder
@@ -96,7 +97,8 @@ class MainWindow(QMainWindow):
         self.clean = None
         self._workers: list[QThread] = []
         self.output: Path | None = None
-        self.intro_card = Path(self.settings.value("intro_card", "")) if self.settings.value("intro_card") else default_intro_card()
+        self.intros = IntroLibrary(DATA_ROOT / "Intros")
+        self._seed_intros()
 
         root = QWidget()
         self.frame = QFrame()
@@ -336,7 +338,8 @@ class MainWindow(QMainWindow):
 
     def _show_plan(self, session_s: float):
         try:
-            head = 30.0 if self.intro_card else 0.0
+            a = self.intros.active()
+            head = a.duration_s if a and self.intro_card else 0.0
             p = plan_render(session_s, 0.0, self.target.currentData(), self.cfg.fit_policy, video_head_s=head)
             self.plan.setText(f"→ {p.summary()}")
         except TakeTooShortError:
@@ -401,15 +404,30 @@ class MainWindow(QMainWindow):
             if k >= 0:
                 self.mic.setCurrentIndex(k)
 
+    @property
+    def intro_card(self) -> Path | None:
+        return self.intros.active_path()
+
+    def _seed_intros(self):
+        """First run: bring in the old single-file setting / bundled card so nothing is lost."""
+        if self.intros.list():
+            return
+        old = self.settings.value("intro_card", "")
+        src = Path(old) if old and Path(old).exists() else default_intro_card()
+        if src:
+            try:
+                self.intros.add(src, "Original intro", make_active=True)
+            except IntroError:
+                pass
+
     def choose_intro(self):
-        f, _ = QFileDialog.getOpenFileName(self, "Intro card video", str(PROJECT_ROOT), "Video (*.mp4 *.mov *.mkv)")
-        if f:
-            self.intro_card = Path(f)
-            self.settings.setValue("intro_card", f)
-            self._update_intro_button()
+        from .intros import IntrosDialog
+        IntrosDialog(self.intros, self, str(browse_start_dir())).exec()
+        self._update_intro_button()
 
     def _update_intro_button(self):
-        self.btn_intro.setText(f"Intro card: {self.intro_card.name[:24]}…" if self.intro_card else "Intro card: none")
+        a = self.intros.active()
+        self.btn_intro.setText(f"Intro: {a.name[:24]}" if a else "Intro: none")
 
     # ================================================================== recording
 
@@ -447,7 +465,8 @@ class MainWindow(QMainWindow):
         else:
             # Takes → "Open in editor": the waveform editor
             self.edl, self.clean = edl, clean
-            self.open_editor()
+            self.open_editor("import" if action == "audacity_import" else
+                             "open" if action == "audacity" else None)
 
     def start_recording(self):
         from core.capture import MicSource, Recorder
@@ -513,8 +532,15 @@ class MainWindow(QMainWindow):
         self.message.setText(detail)
         if self.companion.mood != mood or mood == "amber":
             self.companion.say(mood, s.message.split(" (")[0] if mood == "amber" else None)
-        if s.chime:
-            s.chime = False
+        self._maybe_chime(s)
+
+    def _maybe_chime(self, s):
+        if not s.chime:
+            return
+        s.chime = False
+        # Off by default: through laptop speakers the mic records the beep (Sam's take, 2026-11-11).
+        # Only for people on headphones who turn it on (setting "chime_on").
+        if str(self.settings.value("chime_on", "false")).lower() == "true":
             chime((660.0, 880.0) if s.light == "clear" else (520.0,))
 
     def _check_mic(self, s) -> bool:
@@ -567,7 +593,7 @@ class MainWindow(QMainWindow):
 
     def import_take(self):
         f, _ = QFileDialog.getOpenFileName(self, "Import a take (raw Riverside export, wav, mp3…)",
-                                           str(PROJECT_ROOT), "Audio (*.wav *.flac *.mp3 *.m4a *.aac)")
+                                           str(browse_start_dir()), "Audio (*.wav *.flac *.mp3 *.m4a *.aac)")
         if not f:
             return
         self.import_file(Path(f))
@@ -604,6 +630,10 @@ class MainWindow(QMainWindow):
         r = dlg.exec()
         if r == ReviewDialog.EDIT:
             self.open_editor()
+        elif r == ReviewDialog.AUDACITY:
+            self.open_editor("open")
+        elif r == ReviewDialog.IMPORT_AUDACITY:
+            self.open_editor("import")
         elif r:
             self.polish = dlg.polish.isChecked()
             self.render()
@@ -612,13 +642,14 @@ class MainWindow(QMainWindow):
             self.message.setText("Edits saved. Import or record again, or reopen this session later.")
             edl.save(self.session.edits)
 
-    def open_editor(self):
+    def open_editor(self, audacity_action: str | None = None):
         """The waveform editor (T12). Edits are saved as she goes; Render video renders them."""
         from .editor import EditorDialog
         self._set_mode("review")
         self.companion.say("review")
         dlg = EditorDialog(self.session.dir, self.edl, self.clean, self,
-                           auto_cfg=self._cfg().auto_edit_config())     # same pause shaping as import / REC
+                           auto_cfg=self._cfg().auto_edit_config(),
+                           audacity_action=audacity_action)              # same pause shaping as import / REC
         r = dlg.exec()
         self.clean = dlg.editor.audio               # the audio the edits refer to (an Audacity version, maybe)
         self._show_plan(self.edl.output_duration())
@@ -722,6 +753,8 @@ class MainWindow(QMainWindow):
         worker.start()
 
     def _error(self, details: str):
+        from core.log_setup import get_logger
+        get_logger("app").error("worker failed:\n%s", details)
         self.progress.hide()
         self._set_mode("done")
         self.companion.say("error")

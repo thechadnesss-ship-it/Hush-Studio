@@ -2,6 +2,6 @@
   "plan": "Docs/Engine Build Plan/engine_plan.json",
   "workbook": "outputs/narthen-roadmap/Narthen_Engine_Build_Plan.xlsx",
   "instructions": "AGENTS.md",
-  "checks_quick": ["py", "-m", "pytest", "-q", "-x"],
+  "checks_quick": ["C:/Users/chadj/pika_meditate/.venv/Scripts/python.exe", "-m", "pytest", "-q", "-x", "-m", "not slow"],
   "writable_dirs": ["Docs"]
 }

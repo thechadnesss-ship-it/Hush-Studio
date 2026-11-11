@@ -2,18 +2,45 @@
 duplicate, delete, Show in Explorer, export/import (.hushtake), and reopen into review or render."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (QAbstractItemView, QDialog, QFileDialog, QHBoxLayout, QHeaderView, QInputDialog, QLabel,
                              QLineEdit, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout)
 
 from core.renderer import fmt_hms
-from core.takes import EXPORT_EXT, Take, TakeLibrary
+from core.takes import AUDIO_EXTENSIONS, EXPORT_EXT, Take, TakeLibrary
+
+
+def _drop_paths(mime) -> list[Path]:
+    if not mime.hasUrls():
+        return []
+    return [Path(url.toLocalFile()) for url in mime.urls() if url.isLocalFile()]
+
+
+class _TakeTable(QTableWidget):
+    """Table that accepts audio and .hushtake files dragged from Explorer."""
+
+    files_dropped = pyqtSignal(list)
+
+    def dragEnterEvent(self, event):
+        if _drop_paths(event.mimeData()):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        paths = _drop_paths(event.mimeData())
+        if paths:
+            self.files_dropped.emit(paths)
+            event.acceptProposedAction()
+        else:
+            event.ignore()
 
 
 class TakesDialog(QDialog):
-    """`result_take` / `result_action` ("review" | "render") are set when Sam reopens a take."""
+    """`result_take` / `result_action` request review, render, or an Audacity round trip."""
 
     def __init__(self, library: TakeLibrary, parent=None, busy: bool = False):
         super().__init__(parent)
@@ -22,6 +49,7 @@ class TakesDialog(QDialog):
         self.result_action = ""
         self.setWindowTitle("Takes")
         self.resize(820, 520)
+        self.setAcceptDrops(True)
         lay = QVBoxLayout(self)
         top = QHBoxLayout()
         self.search = QLineEdit()
@@ -34,7 +62,9 @@ class TakesDialog(QDialog):
         top.addWidget(self.btn_import)
         lay.addLayout(top)
 
-        self.table = QTableWidget(0, 4)
+        self.table = _TakeTable(0, 4)
+        self.table.setAcceptDrops(True)
+        self.table.files_dropped.connect(self.import_paths)
         self.table.setHorizontalHeaderLabels(["Name", "Date", "Length", "Status"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -54,6 +84,8 @@ class TakesDialog(QDialog):
         row = QHBoxLayout()
         self.btns: dict[str, QPushButton] = {}
         for key, text, fn in [("review", "Open in editor", lambda: self.reopen("review")),
+                              ("audacity", "Open in Audacity", lambda: self.reopen("audacity")),
+                              ("audacity_import", "Import changes…", lambda: self.reopen("audacity_import")),
                               ("render", "Render", lambda: self.reopen("render")),
                               ("rename", "Rename", self.rename), ("dup", "Duplicate", self.duplicate),
                               ("explorer", "Show in Explorer", self.explorer), ("export", "Export…", self.export),
@@ -102,7 +134,12 @@ class TakesDialog(QDialog):
         t = self.current()
         if t is None or self._busy:
             return
-        if not (t.dir / "raw.flac").exists() or not (t.dir / "clean.wav").exists():
+        source = "clean.wav"
+        try:
+            source = str(json.loads((t.dir / "edits.json").read_text("utf-8")).get("source", source))
+        except (OSError, ValueError, TypeError):
+            pass
+        if not (t.dir / source).exists():
             QMessageBox.information(self, "Takes", "This take has no cleaned audio yet, so it can't be opened.")
             return
         self.result_take, self.result_action = t, action
@@ -143,16 +180,50 @@ class TakesDialog(QDialog):
         t = self.current()
         if t is None:
             return
-        f, _ = QFileDialog.getSaveFileName(self, "Export take", f"{t.name}{EXPORT_EXT}", f"Hush take (*{EXPORT_EXT})")
+        filters = (f"Hush take (*{EXPORT_EXT});;WAV audio (*.wav);;FLAC audio (*.flac);;"
+                   "MP3 audio (*.mp3);;Finished video (*.mp4)")
+        f, selected = QFileDialog.getSaveFileName(self, "Export take", f"{t.name}{EXPORT_EXT}", filters)
         if f:
-            self.lib.export(t, Path(f))
+            try:
+                expected = next((ext for label, ext in (("Hush take", EXPORT_EXT), ("WAV", ".wav"),
+                                                         ("FLAC", ".flac"), ("MP3", ".mp3"),
+                                                         ("Finished video", ".mp4")) if label in selected), None)
+                destination = Path(f)
+                if expected and destination.suffix.lower() != expected:
+                    destination = destination.with_suffix(expected)
+                self.lib.export_path(t, destination)
+            except Exception as e:
+                QMessageBox.warning(self, "Takes", str(e))
 
     def import_take(self):
-        f, _ = QFileDialog.getOpenFileName(self, "Import a take", "", f"Hush take (*{EXPORT_EXT})")
+        audio = " ".join(f"*{ext}" for ext in sorted(AUDIO_EXTENSIONS))
+        filters = f"Takes (*{EXPORT_EXT} {audio});;Hush take (*{EXPORT_EXT});;Audio ({audio})"
+        f, _ = QFileDialog.getOpenFileName(self, "Import a take", "", filters)
         if not f:
             return
-        try:
-            self.lib.import_export(Path(f))
-        except Exception as e:
-            QMessageBox.warning(self, "Takes", str(e))
+        self.import_paths([Path(f)])
+
+    def dragEnterEvent(self, event):
+        if _drop_paths(event.mimeData()):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        paths = _drop_paths(event.mimeData())
+        if paths:
+            self.import_paths(paths)
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def import_paths(self, paths: list[Path]):
+        errors = []
+        for path in paths:
+            try:
+                self.lib.import_path(path)
+            except Exception as e:
+                errors.append(f"{path.name}: {e}")
+        if errors:
+            QMessageBox.warning(self, "Takes", "\n".join(errors))
         self.refresh()
