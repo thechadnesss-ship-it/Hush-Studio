@@ -1,7 +1,8 @@
 """Live recording (CLAUDE.md Module B), with the plane guard running live.
 
     mic callback ──put_nowait──► queue ──► worker thread:
-                                           • raw.flac (always: the untouched backup)
+                                           • calibrated input gain (T27), then
+                                           • raw.flac (always: the unedited backup)
                                            • ear + guard → traffic light (take time)
                                            • VU level
                                            • background noise removal on finished segments
@@ -34,6 +35,7 @@ from .log_setup import get_logger
 
 log = get_logger("capture")
 
+from .calibration import LevelWatch
 from .denoise import DFN_PREROLL_S, SpectralGate, deepfilter_array, deepfilter_exe, deepfilter_input_gain_db
 from .plane_guard.ear import Ear
 from .plane_guard.guard import Guard, GuardUpdate
@@ -137,6 +139,8 @@ class LiveStatus:
     overflows: int = 0               # input buffers lost by the sound driver (crackle)
     last_clip_s: float | None = None # take time of the latest clipped block
     lost_at_s: list = field(default_factory=list)   # take times where sound was lost (T8)
+    input_gain_db: float = 0.0       # calibrated gain applied to every block before raw.flac (T27)
+    level_advice: str = ""           # "" | "quiet" | "loud": her voice is out of range (T27)
 
 
 @dataclass
@@ -153,7 +157,8 @@ class Recorder:
     def __init__(self, session: Session, source: AudioSource | None = None, home: Home = Home(),
                  radar: SkyRadar | None = None, use_radar: bool = True, guard_enabled: bool = True,
                  segment_s: float = 60.0, on_status: Callable[[LiveStatus], None] | None = None,
-                 on_radar: Callable | None = None):
+                 on_radar: Callable | None = None, input_gain_db: float = 0.0,
+                 floor_db: float | None = None):
         from .plane_guard.guard import GuardConfig
         self.session = session
         self.source = source or MicSource()
@@ -163,7 +168,12 @@ class Recorder:
         self.segment_s = segment_s
         self.on_status = on_status
         self.on_radar = on_radar             # e.g. the quiet-time planner's logger
-        self.status = LiveStatus()
+        self.status = LiveStatus(input_gain_db=float(input_gain_db))
+        # T27: the mic's calibrated gain, applied before anything else so raw.flac, the ear, noise
+        # removal and the meter all see the take at a healthy level (capture.json keeps the gain).
+        self._gain = float(10 ** (input_gain_db / 20))
+        # the room floor after gain: calibrated floor (measured without gain) + gain
+        self.level_watch = LevelWatch(None if floor_db is None else floor_db + input_gain_db)
         self.q: queue.Queue[np.ndarray] = queue.Queue(maxsize=600)   # 60 s of slack
         self._lock = threading.Lock()                                # guard is touched by 2 threads
         self._paused = False
@@ -261,6 +271,7 @@ class Recorder:
         s = self.status
         return {"take_s": round(self.take_s, 2), "denoise_backend": s.denoise_backend,
                 **getattr(self.source, "info", {}),
+                "input_gain_db": s.input_gain_db,
                 "peak_dbfs": round(self._peak_db, 2), "clipped_samples": s.clipped_samples,
                 "over_full_scale_samples": s.over_full_scale,
                 "input_overflows": getattr(self.source, "overflows", 0), "dropped_blocks": s.dropped_blocks,
@@ -294,6 +305,8 @@ class Recorder:
                 b = self.q.get(timeout=0.1)
             except queue.Empty:
                 continue
+            if self._gain != 1.0:
+                b = (b * self._gain).astype(np.float32)
             rms = float(np.sqrt(np.mean(b.astype(np.float64) ** 2)) + 1e-12)
             self.status.level_db = 20 * np.log10(rms)
             self.status.peak_db = float(20 * np.log10(np.abs(b).max(initial=1e-12)))
@@ -307,6 +320,7 @@ class Recorder:
             self._recent.append(b)
             self._samples += len(b)
             self._check_input(b)
+            self.status.level_advice = self.level_watch.feed(self.status.level_db, self.status.peak_db)
             self._resolve_losses()
             with self._lock:
                 self.ear.feed(b)
@@ -315,7 +329,11 @@ class Recorder:
             self._publish(upd)
 
     def _check_input(self, b: np.ndarray) -> None:
+        """`b` is the block after the calibrated gain. Clipping counts at the mic (before a
+        reducing gain: the mic itself is too hot) and in what is recorded (after a boost)."""
         a = np.abs(b)
+        if self._gain < 1.0:
+            a = a / self._gain                      # back to the mic's own level
         self._peak_db = max(self._peak_db, self.status.peak_db)
         clipped = int(np.count_nonzero(a >= CLIP_LEVEL))
         if clipped:

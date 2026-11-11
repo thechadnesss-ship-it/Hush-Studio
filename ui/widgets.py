@@ -133,6 +133,7 @@ class VUMeter(QWidget):
         self.level = -120.0
         self.peak = -120.0
         self._clip_until = 0.0
+        self.zone: tuple[float, float] | None = None     # target peak zone (dBFS), drawn as a band (T27)
         self.setFixedHeight(6)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
@@ -145,6 +146,10 @@ class VUMeter(QWidget):
         self.peak = max(peak_db, self.peak - 1.5)
         if clipped:
             self._clip_until = time.monotonic() + self.CLIP_HOLD_S
+        self.update()
+
+    def set_zone(self, zone: tuple[float, float] | None) -> None:
+        self.zone = zone
         self.update()
 
     def reset(self) -> None:
@@ -161,6 +166,10 @@ class VUMeter(QWidget):
         p.drawRoundedRect(QRectF(0, 0, w, h), h / 2, h / 2)
         clip = self.clipping
         frac = lambda db: min(1.0, max(0.0, (db + 60) / 60))
+        if self.zone is not None:                  # where her peaks should land
+            p.setBrush(QColor(theme.LILAC))
+            x0, x1 = w * frac(self.zone[0]), w * frac(self.zone[1])
+            p.drawRect(QRectF(x0, 0, x1 - x0, h))
         if clip:                                   # the whole track: impossible to miss
             p.setBrush(QColor(theme.REC_RED))
             p.drawRoundedRect(QRectF(0, 0, w, h), h / 2, h / 2)
@@ -169,7 +178,9 @@ class VUMeter(QWidget):
             p.setBrush(QColor(col))
             p.drawRoundedRect(QRectF(0, 0, max(h, w * frac(self.level)), h), h / 2, h / 2)
         if self.peak > -60:
-            col = theme.TEXT if clip else (theme.AMBER if self.peak >= self.HOT_DB else theme.TEXT)
+            in_zone = self.zone is not None and self.zone[0] <= self.peak <= self.zone[1]
+            col = theme.TEXT if clip else (theme.GREEN if in_zone else
+                                           theme.AMBER if self.peak >= self.HOT_DB else theme.TEXT)
             p.setBrush(QColor(col))
             x = w * frac(self.peak)
             p.drawRect(QRectF(x - 1, 0, 2, h))

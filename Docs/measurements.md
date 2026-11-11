@@ -171,3 +171,21 @@ makes speaking hard → "Listen back (last 15 s)" while paused instead.
   longer runs for imports.
 - **Live capture (`core/capture.py`):** callback only enqueues; full queue drops + counts (a
   simulated faster-than-real-time source uses backpressure instead). USB mic verified at 48 kHz.
+- **Mic calibration (T27, `core/calibration.py`, `ui/calibrate.py`):** Settings → "Check mic" (offered once on first run
+  after the T21 mic check passes, and at REC for a mic not yet checked: "Check mic" / "Record anyway", asked once per mic
+  per run). Setup checks by device name (WASAPI list + defaults): laptop array / Intel SST vs USB mic (laptop default with
+  a USB mic plugged in = "wrong mic"), Krisp / NVIDIA Broadcast / Steam / VB-Cable inputs, Bluetooth hands-free, 48 kHz
+  (`check_input_settings`), playback on speakers vs headphones (headphones in a USB mic's jack appear as
+  "Speakers (<mic>)" and count as headphones), Windows privacy switches (no Start while blocked, or with no mic).
+  Then 5 s quiet → floor = median 100 ms RMS; a sentence → sample peak + RMS of blocks ≥ floor + 10 dB.
+  Gain = −10 dBFS − sentence peak (0.5 dB steps, ±1 dB dead band, −18…+30 dB): one sentence peaks a few dB under a whole
+  take, so a take lands in **−12…−6 dBFS** (test: Sam's −29.5 dBFS Q2U level → +19.5 dB → a 90 s take with a +2.5 dB
+  moment peaks inside the zone in raw.flac). Advice: clipping (full-scale samples or flat tops → no save), far too quiet
+  (> +30 dB needed), quiet (> +12 dB: boosted, but turn the mic up / move closer), a little loud (turned down), floor
+  ≤ −90 dBFS = a gate/suppressor in the chain, voice < 15 dB over the room = noisy. Stored per device as JSON in
+  QSettings `calibration/<name, lower-case, first 31 chars>` (HKCU; MME truncates names to 31). The Recorder multiplies
+  every block by the gain **before raw.flac** (so raw/diagnostics show the real recorded level; `capture.json`
+  `input_gain_db` keeps the factor) and still counts clipping at the mic's own level when the gain is negative.
+  `LevelWatch` (last 20 s of voice, needs 5 s): peaks < −20 dBFS → "quiet", > −2 → "loud", with hysteresis, shown in the
+  red mic line under the meter (clipping / lost sound keep priority). The meter draws the target zone once the mic is
+  checked. Dev PC has no input device (only Realtek WDM-KS + Steam virtual), so the real USB / laptop mic run is Sam's.

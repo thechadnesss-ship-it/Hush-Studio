@@ -75,6 +75,7 @@ Moved to **`Docs/measurements.md`** (2026-11-11). Read only the bullets your tas
 - Waveform editor (T12, D01, `core/editing.py`, `ui/editor.py`):
 - Import → Steps panel (T26, `ui/steps.py`, `ui/editor.py`, `core/editing.py`):
 - Live capture (`core/capture.py`):
+- Mic calibration (T27, `core/calibration.py`, `ui/calibrate.py`):
 
 ## 1. System Overview
 
