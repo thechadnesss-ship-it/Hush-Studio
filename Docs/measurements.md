@@ -124,6 +124,20 @@ makes speaking hard → "Listen back (last 15 s)" while paused instead.
   Measured (run for `v0.3.0-rc.2`, 2026-11-11): tag → artifact in ≈ 4.5 min; Setup.exe 127.7 MB, checksum OK; on this PC it
   installs silently in 32 s and `--self-test` passes every check in 54 s (1 h exact render incl.). Publishing waits on Sam
   adding the `RELEASES_TOKEN` secret (RELEASING.md, one-time setup); without it the last step fails with that message.
+- **Updater (T23, D05, `core/updater.py`, `ui/updates.py`):** 3 s after start (skipped when `PIKA_OFFLINE=1`) and from
+  Help → Check for updates…, `GET api.github.com/repos/thechadnesss-ship-it/Hush-Studio-Releases/releases/latest` (no token;
+  rc pre-releases are never "latest"; 404 = no releases yet). Newer → What's new (CHANGELOG section, build footer stripped),
+  Update now / Skip this version / Later, plus a header link "Update to X". Auto-check is silent offline, when up to date, on
+  a skipped version, and never pops over recording/render/review/upload or another dialog (`MainWindow.update_blocker()`;
+  re-checked after the download). Download to `DATA_ROOT\updates`, SHA-256 from the `.sha256` asset (mismatch → deleted).
+  Hand-off: a PowerShell script waits for the app's PID (+ name) to exit **and** `HushStudioAppMutex` to be free (with
+  `/SUPPRESSMSGBOXES` Inno would silently cancel on its "app is running" prompt), runs Setup `/VERYSILENT /SUPPRESSMSGBOXES
+  /NORESTART /NOCANCEL /SP-`, writes `install.exitcode` and reopens `sys.executable`. Measured: `DETACHED_PROCESS` makes
+  powershell.exe exit without running the script; use `CREATE_NO_WINDOW`. Next start: "Updated to X" note + downloads removed,
+  or "didn't finish" + Setup log path in the app log. From source, Update now opens the release page. Test overrides:
+  `HUSH_UPDATE_API`, `HUSH_RELEASES_REPO`. E2E 2026-11-11 on the dev PC: real 0.3.0 install → fake endpoint serving a 0.3.1
+  build → Update now: download + verify 194 MB ≈ 6 s (localhost), app closed, Setup ≈ 40 s, reopened on 0.3.1 ≈ 44 s after
+  the click, takes intact. Sam's first in-app upgrade is from the first published release that contains the updater.
 - **Takes library (T10, D04, `core/takes.py`, `ui/takes.py`):** one folder per take in `Takes/` (was `sessions/`; renamed once at
   startup, nothing deleted), each with `take.json` (name, created, notes, uploaded). Folder name stays the timestamp; rename only edits
   `name`. Status derived from files: raw → edited (edits.json) → rendered (output_*h.mp4) → uploaded (take.json). Takes screen (header

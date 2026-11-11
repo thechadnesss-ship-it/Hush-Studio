@@ -1,4 +1,5 @@
 """Hush Studio: record (or import) a session, review the automatic edits, render 1–8 h."""
+import os
 import sys
 import threading
 
@@ -104,6 +105,8 @@ def main() -> int:
     w = MainWindow()
     w.show()
     QTimer.singleShot(400, lambda: first_run_mic_check(w))
+    if os.environ.get("PIKA_OFFLINE") != "1":
+        QTimer.singleShot(3000, w.updater.check)    # T23: quiet when offline or up to date
     return app.exec()
 
 

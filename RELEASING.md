@@ -38,6 +38,16 @@ Releases are published in the separate **public** repo `Hush-Studio-Releases` (b
 Sam and the updater can download without a GitHub account or token; the source repo can be
 private. Set the Actions variable `RELEASES_REPO` (`owner/name`) to publish somewhere else.
 
+## How Sam gets it (in-app updater, T23)
+
+The installed app asks the releases repo for the latest release at start-up (and from Help →
+Check for updates…), shows the changelog section as *What's new*, and on **Update now**
+downloads the Setup.exe, checks it against the `.sha256` file, closes, installs silently and
+reopens. So: keep the asset names as the workflow makes them, write the changelog for Sam, and
+only full releases (not `-rc`) are offered. Test an update without publishing by pointing the
+app at a fake endpoint: `HUSH_UPDATE_API=http://127.0.0.1:<port>` and
+`HUSH_RELEASES_REPO=<owner/name>` (see `tests/test_updater.py`).
+
 ## One-time setup
 
 1. The repo `<owner>/Hush-Studio-Releases` exists, is public and has at least one commit (a

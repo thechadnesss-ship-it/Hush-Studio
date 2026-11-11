@@ -71,6 +71,7 @@ Moved to **`Docs/measurements.md`** (2026-11-11). Read only the bullets your tas
 - Installer (T21, `build/`, `core/mic_check.py`, `core/selftest.py`):
 - Laptop test fixes (T24, `core/ffmpeg_tools.py`, `core/selftest.py`):
 - Releases (T22, D05, `.github/workflows/release.yml`, `RELEASING.md`):
+- Updater (T23, D05, `core/updater.py`, `ui/updates.py`):
 - Takes library (T10, D04, `core/takes.py`, `ui/takes.py`):
 - Waveform editor (T12, D01, `core/editing.py`, `ui/editor.py`):
 - Import → Steps panel (T26, `ui/steps.py`, `ui/editor.py`, `core/editing.py`):
