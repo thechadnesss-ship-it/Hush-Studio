@@ -10,6 +10,7 @@ rename can't break anything. Status is derived from the files: raw â†’ edited â†
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -18,8 +19,15 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
+
+from . import ffmpeg_tools as ff
+
 META = "take.json"
 EXPORT_EXT = ".hushtake"
+AUDIO_EXTENSIONS = frozenset({".wav", ".mp3", ".m4a", ".flac"})
+EXPORT_AUDIO_EXTENSIONS = frozenset({".wav", ".flac", ".mp3"})
+VIDEO_EXTENSIONS = frozenset({".mp4"})
 STATUSES = ("raw", "edited", "rendered", "uploaded")
 _NOT_COPIED = ("output_*.mp4", "output_*.mp4.tmp")      # big, rebuilt in seconds by Render
 
@@ -179,6 +187,11 @@ class TakeLibrary:
     # ------------------------------------------------------------------ share
 
     def export(self, take: Take | str, dest: Path) -> Path:
+        """Export the portable take bundle (raw audio, edit list and metadata).
+
+        Rendered videos are deliberately left out: they are large and can be rebuilt from
+        the encoded session audio without changing the take itself.
+        """
         d = self._dir(take)
         dest = Path(dest)
         if dest.suffix != EXPORT_EXT:
@@ -188,6 +201,125 @@ class TakeLibrary:
                 if f.is_file() and not f.match("output_*.mp4*"):
                     z.write(f, f.relative_to(d).as_posix())
         return dest
+
+    def import_audio(self, path: Path, name: str | None = None) -> Take:
+        """Create a take from a plain audio file through the session import path.
+
+        ``core.session.import_take`` is the single audio-ingestion path.  It decodes to mono
+        48 kHz and writes the lossless ``raw.flac`` backup, so Riverside's 44.1 kHz exports
+        and files from other applications get the same take representation as recordings.
+        Preparation (denoise/auto-edit) remains an explicit later step in the main window.
+        """
+        path = Path(path)
+        if path.suffix.lower() not in AUDIO_EXTENSIONS:
+            raise ValueError(f"Unsupported audio file: {path.name}")
+        if not path.is_file():
+            raise FileNotFoundError(path)
+
+        from .session import Session, import_take
+
+        take_name = (name or path.stem).strip() or "Imported take"
+        d = self.new_dir(take_name)
+        try:
+            import_take(path, Session(d))
+        except Exception:
+            shutil.rmtree(d, ignore_errors=True)
+            raise
+        return read_take(d)
+
+    def import_path(self, path: Path) -> Take:
+        """Import either a ``.hushtake`` bundle or a supported plain audio file."""
+        path = Path(path)
+        suffix = path.suffix.lower()
+        if suffix == EXPORT_EXT:
+            return self.import_export(path)
+        if suffix in AUDIO_EXTENSIONS:
+            return self.import_audio(path)
+        raise ValueError(f"Unsupported take file: {path.name}")
+
+    def _edited_audio(self, take: Take | str) -> np.ndarray:
+        """Return the current edited timeline as mono 48 kHz float32 samples."""
+        from .edl import EditList
+        from .session import load_mono_48k
+
+        d = self._dir(take)
+        edits = d / "edits.json"
+        if edits.exists():
+            edl = EditList.load(edits)
+            source = d / edl.source
+            if not source.exists():
+                raise FileNotFoundError(f"Edit-list source is missing: {source.name}")
+            audio = load_mono_48k(source)
+            return np.asarray(edl.render(audio), dtype=np.float32)
+
+        raw = d / "raw.flac"
+        if not raw.exists():
+            raise FileNotFoundError(f"Take has no audio: {d}")
+        return np.asarray(load_mono_48k(raw), dtype=np.float32)
+
+    def export_audio(self, take: Take | str, dest: Path) -> Path:
+        """Export the take's edited timeline as WAV, FLAC or MP3."""
+        import soundfile as sf
+
+        dest = Path(dest)
+        if not dest.suffix:
+            dest = dest.with_suffix(".wav")
+        suffix = dest.suffix.lower()
+        if suffix not in EXPORT_AUDIO_EXTENSIONS:
+            raise ValueError("Edited audio must be exported as .wav, .flac or .mp3")
+
+        audio = self._edited_audio(take)
+        tmp = dest.with_name(dest.name + ".part")
+        try:
+            if suffix == ".mp3":
+                proc = subprocess.run(
+                    [ff.ffmpeg_bin(), "-hide_banner", "-loglevel", "error", "-y",
+                     "-f", "f32le", "-ar", "48000", "-ac", "1", "-i", "pipe:0",
+                     "-c:a", "libmp3lame", "-q:a", "2", "-f", "mp3", str(tmp)],
+                    input=audio.tobytes(), capture_output=True,
+                )
+                if proc.returncode:
+                    detail = proc.stderr.decode("utf-8", "replace").strip()
+                    raise RuntimeError(f"MP3 export failed: {detail[-800:]}")
+            else:
+                fmt = "WAV" if suffix == ".wav" else "FLAC"
+                subtype = "FLOAT" if suffix == ".wav" else "PCM_24"
+                sf.write(tmp, audio, 48000, format=fmt, subtype=subtype)
+            os.replace(tmp, dest)
+        finally:
+            tmp.unlink(missing_ok=True)
+        return dest
+
+    def export_video(self, take: Take | str, dest: Path, hours: float | None = None) -> Path:
+        """Copy a finished MP4 out of the take without re-encoding it."""
+        d = self._dir(take)
+        if hours is None:
+            rendered = sorted(d.glob("output_*h.mp4"))
+            if not rendered:
+                raise FileNotFoundError("This take has no finished MP4")
+            source = rendered[-1]
+        else:
+            source = d / f"output_{hours:g}h.mp4"
+            if not source.is_file():
+                raise FileNotFoundError(source)
+        dest = Path(dest)
+        if not dest.suffix:
+            dest = dest.with_suffix(".mp4")
+        if dest.suffix.lower() not in VIDEO_EXTENSIONS:
+            raise ValueError("Finished video must be exported as .mp4")
+        shutil.copy2(source, dest)
+        return dest
+
+    def export_path(self, take: Take | str, dest: Path) -> Path:
+        """Export using the destination extension selected by the user."""
+        suffix = Path(dest).suffix.lower()
+        if suffix == EXPORT_EXT:
+            return self.export(take, dest)
+        if suffix in EXPORT_AUDIO_EXTENSIONS:
+            return self.export_audio(take, dest)
+        if suffix in VIDEO_EXTENSIONS:
+            return self.export_video(take, dest)
+        raise ValueError("Choose a .hushtake, .wav, .flac, .mp3 or .mp4 destination")
 
     def import_export(self, path: Path) -> Take:
         d = self.new_dir()

@@ -4,12 +4,38 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (QAbstractItemView, QDialog, QFileDialog, QHBoxLayout, QHeaderView, QInputDialog, QLabel,
                              QLineEdit, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout)
 
 from core.renderer import fmt_hms
-from core.takes import EXPORT_EXT, Take, TakeLibrary
+from core.takes import AUDIO_EXTENSIONS, EXPORT_EXT, Take, TakeLibrary
+
+
+def _drop_paths(mime) -> list[Path]:
+    if not mime.hasUrls():
+        return []
+    return [Path(url.toLocalFile()) for url in mime.urls() if url.isLocalFile()]
+
+
+class _TakeTable(QTableWidget):
+    """Table that accepts audio and .hushtake files dragged from Explorer."""
+
+    files_dropped = pyqtSignal(list)
+
+    def dragEnterEvent(self, event):
+        if _drop_paths(event.mimeData()):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        paths = _drop_paths(event.mimeData())
+        if paths:
+            self.files_dropped.emit(paths)
+            event.acceptProposedAction()
+        else:
+            event.ignore()
 
 
 class TakesDialog(QDialog):
@@ -22,6 +48,7 @@ class TakesDialog(QDialog):
         self.result_action = ""
         self.setWindowTitle("Takes")
         self.resize(820, 520)
+        self.setAcceptDrops(True)
         lay = QVBoxLayout(self)
         top = QHBoxLayout()
         self.search = QLineEdit()
@@ -34,7 +61,9 @@ class TakesDialog(QDialog):
         top.addWidget(self.btn_import)
         lay.addLayout(top)
 
-        self.table = QTableWidget(0, 4)
+        self.table = _TakeTable(0, 4)
+        self.table.setAcceptDrops(True)
+        self.table.files_dropped.connect(self.import_paths)
         self.table.setHorizontalHeaderLabels(["Name", "Date", "Length", "Status"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -143,16 +172,44 @@ class TakesDialog(QDialog):
         t = self.current()
         if t is None:
             return
-        f, _ = QFileDialog.getSaveFileName(self, "Export take", f"{t.name}{EXPORT_EXT}", f"Hush take (*{EXPORT_EXT})")
+        filters = (f"Hush take (*{EXPORT_EXT});;WAV audio (*.wav);;FLAC audio (*.flac);;"
+                   "MP3 audio (*.mp3);;Finished video (*.mp4)")
+        f, _ = QFileDialog.getSaveFileName(self, "Export take", f"{t.name}{EXPORT_EXT}", filters)
         if f:
-            self.lib.export(t, Path(f))
+            try:
+                self.lib.export_path(t, Path(f))
+            except Exception as e:
+                QMessageBox.warning(self, "Takes", str(e))
 
     def import_take(self):
-        f, _ = QFileDialog.getOpenFileName(self, "Import a take", "", f"Hush take (*{EXPORT_EXT})")
+        audio = " ".join(f"*{ext}" for ext in sorted(AUDIO_EXTENSIONS))
+        filters = f"Takes (*{EXPORT_EXT} {audio});;Hush take (*{EXPORT_EXT});;Audio ({audio})"
+        f, _ = QFileDialog.getOpenFileName(self, "Import a take", "", filters)
         if not f:
             return
-        try:
-            self.lib.import_export(Path(f))
-        except Exception as e:
-            QMessageBox.warning(self, "Takes", str(e))
+        self.import_paths([Path(f)])
+
+    def dragEnterEvent(self, event):
+        if _drop_paths(event.mimeData()):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        paths = _drop_paths(event.mimeData())
+        if paths:
+            self.import_paths(paths)
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def import_paths(self, paths: list[Path]):
+        errors = []
+        for path in paths:
+            try:
+                self.lib.import_path(path)
+            except Exception as e:
+                errors.append(f"{path.name}: {e}")
+        if errors:
+            QMessageBox.warning(self, "Takes", "\n".join(errors))
         self.refresh()
