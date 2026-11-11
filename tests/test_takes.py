@@ -109,6 +109,25 @@ def test_export_import_roundtrip(lib, tmp_path):
     assert t.name == "share me" and t.status == "edited" and (t.dir / "clean.wav").exists()
 
 
+def test_plain_audio_import_is_resampled_to_take_format(lib, tmp_path):
+    src = tmp_path / "riverside.wav"
+    sf.write(src, np.zeros(4410, np.float32), 44100)
+    t = lib.import_audio(src)
+    info = sf.info(t.dir / "raw.flac")
+    assert t.name == "riverside" and info.samplerate == 48000 and info.channels == 1
+
+
+def test_export_audio_formats_and_finished_video(lib, tmp_path):
+    d = make_take(lib, "exports")
+    t = lib.list()[0]
+    for ext in (".wav", ".flac", ".mp3"):
+        out = lib.export_path(t, tmp_path / f"edited{ext}")
+        assert out.exists() and out.suffix == ext
+    (d / "output_1h.mp4").write_bytes(b"finished")
+    out = lib.export_path(t, tmp_path / "finished.mp4")
+    assert out.read_bytes() == b"finished"
+
+
 def test_import_rejects_junk_and_traversal(lib, tmp_path):
     bad = tmp_path / "bad.hushtake"
     with zipfile.ZipFile(bad, "w") as z:
