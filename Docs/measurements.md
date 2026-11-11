@@ -109,6 +109,9 @@ makes speaking hard → "Listen back (last 15 s)" while paused instead.
   self-test) → `.sha256` (sha256sum format) → run artifact (14 days) → `gh release create` in the public
   `Hush-Studio-Releases` repo with secret `RELEASES_TOKEN` (fine-grained, Contents R/W on that repo only; variable
   `RELEASES_REPO` overrides). Re-running a tag replaces the files. Companion GIFs aren't in git → released builds show the moon.
+  Measured (run for `v0.3.0-rc.2`, 2026-11-11): tag → artifact in ≈ 4.5 min; Setup.exe 127.7 MB, checksum OK; on this PC it
+  installs silently in 32 s and `--self-test` passes every check in 54 s (1 h exact render incl.). Publishing waits on Sam
+  adding the `RELEASES_TOKEN` secret (RELEASING.md, one-time setup); without it the last step fails with that message.
 - **Takes library (T10, D04, `core/takes.py`, `ui/takes.py`):** one folder per take in `Takes/` (was `sessions/`; renamed once at
   startup, nothing deleted), each with `take.json` (name, created, notes, uploaded). Folder name stays the timestamp; rename only edits
   `name`. Status derived from files: raw → edited (edits.json) → rendered (output_*h.mp4) → uploaded (take.json). Takes screen (header
