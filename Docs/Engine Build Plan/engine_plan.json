@@ -221,8 +221,8 @@
       {
         "week": "2026-W46",
         "note": "auto (live from Claude status line and Codex logs)",
-        "claude": "64%",
-        "codex": "86%"
+        "claude": "70%",
+        "codex": "87%"
       }
     ]
   },
@@ -970,6 +970,179 @@
         "T15"
       ],
       "text": "T15 round 2: quick-check failure was wrong interpreter (no pytest); re-ran in project venv, 290 passed, no code change"
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Claude",
+      "tasks": [
+        "T21"
+      ],
+      "text": "T21: Setup.exe built (PyInstaller + Inno Setup), per-user install, data in LOCALAPPDATA, first-run mic check, frozen self-test passes; clean-VM verify pending"
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Claude",
+      "tasks": [
+        "T21"
+      ],
+      "text": "T21: verify_install.ps1 run on the dev PC (not a clean VM): install, frozen self-test, upgrade, uninstall all pass; marker take + setting survived upgrade and uninstall; program, shortcuts removed. Clean-VM run + manual record/render/upload still pending."
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Codex",
+      "tasks": [
+        "T21"
+      ],
+      "text": "Review clean: compared T21 branch to main; checked installer scripts/spec, frozen paths, bundled helper DLL validation, mic check, mutex, self-test, and data-preserving upgrade/uninstall behavior. No blocking findings. Clean-VM and manual record/render/upload remain documented follow-ups."
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Claude",
+      "tasks": [
+        "T24",
+        "T25",
+        "T26",
+        "T27",
+        "T28"
+      ],
+      "text": "Added P0 M0 tasks T24-T28 from Sam's first laptop test (import failed, no intro visuals, beep, distortion and cut-off phrases, want raw-first import with explicit choices, want mic calibration); T24 fixes already coded in the main working tree, uncommitted"
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Claude",
+      "tasks": [
+        "T24"
+      ],
+      "text": "T24 laptop fixes committed (e90a93b): import stdin fix confirmed by repro test, intro card bundled + self-test checks it, chime off by default; installer 0.2.1 built and verify_install passed; Sam's laptop GUI check pending"
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Codex",
+      "tasks": [
+        "T24"
+      ],
+      "text": "Review clean: no blocking findings. Verified T24 focused tests (11 passed) and full pytest (328 passed, 2 skipped); inspected import stdin/error logging, intro packaging/seeding, render wiring, and chime gating."
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Codex",
+      "tasks": [
+        "T24"
+      ],
+      "text": "Reviewed T24 against main; no blocking findings. Targeted T24 suite: 11 passed. Full pytest started; long media suite still running without reported failures at handoff."
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Codex",
+      "tasks": [
+        "T24"
+      ],
+      "text": "Review clean: T24 diff checked against main; targeted laptop-fix tests 11 passed; no blocking correctness findings."
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Autopilot",
+      "tasks": [
+        "T24"
+      ],
+      "text": "T24: autopilot stopped: the reviewer finished twice without recording a result"
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Claude",
+      "tasks": [
+        "T22"
+      ],
+      "text": "T22: tag-triggered release workflow (tests, installer, SHA-256, GitHub Release in Hush-Studio-Releases), CHANGELOG + RELEASING.md, APP_VERSION 0.3.0. CI build and the downloaded installer are verified; publishing waits for Sam's RELEASES_TOKEN secret."
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Codex",
+      "tasks": [
+        "T22"
+      ],
+      "text": "Review clean: T22 release workflow and helper checks are internally consistent; targeted release tests passed 4/4; no blocking findings."
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Codex",
+      "tasks": [
+        "T25"
+      ],
+      "text": "T25 complete: quiet-take DeepFilterNet input staging and relative floor; regression tests and diagnostics verification pass. Real raw.flac was unavailable, so neural real-take listening cases remain skipped."
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Codex",
+      "tasks": [
+        "T22"
+      ],
+      "text": "Review clean: release workflow and helper validation checked against build outputs and release tests; 4 targeted tests passed. No blocking findings."
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Claude",
+      "tasks": [
+        "T25"
+      ],
+      "text": "T25: changes requested by Claude's review (round 1), back to Codex: 1) Regression risk to the T7 dropout fix: core/denoise.py now sets the injected floor to max(-65, staged_peak_db - 53) instead of the fixed, measured -65 dBFS. "
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "User",
+      "tasks": [
+        "T25"
+      ],
+      "text": "T25: handed back to Codex to fix Claude findings (round 1)"
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Codex",
+      "tasks": [
+        "T22"
+      ],
+      "text": "Re-review clean: verified T22 release workflow and metadata validation against main; tests/test_release.py passed 4/4 and v0.3.0-rc.2 metadata path produced prerelease=true."
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Autopilot",
+      "tasks": [
+        "T22"
+      ],
+      "text": "T22: autopilot stopped: the reviewer finished twice without recording a result"
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Claude",
+      "tasks": [
+        "T1",
+        "T16"
+      ],
+      "text": "Demoted T1 and T16 to P2: YouTube upload is Sam's least important feature, do last"
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Codex",
+      "tasks": [
+        "T25"
+      ],
+      "text": "T25 review handoff: fixed validated -65 dBFS floor regression and shared one staging gain across live DeepFilterNet segments. Added regression tests including installed deep-filter.exe on real quiet take. Post-merge pytest: 316 passed, 9 skipped; diagnostics: zero gaps at all available render stages."
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Claude",
+      "tasks": [
+        "T25"
+      ],
+      "text": "T25: changes requested by Claude's review (round 2), back to Codex: 1) core/denoise.py:288 deepfilter_array: when peak*stage_scale > DFN_HEADROOM the input scale is DFN_HEADROOM/peak/stage_scale; it must be DFN_HEADROOM/peak (so"
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "User",
+      "tasks": [
+        "T25"
+      ],
+      "text": "T25: handed back to Codex to fix Claude findings (round 2)"
     }
   ],
   "tasks": [
@@ -978,7 +1151,7 @@
       "milestone": "M1",
       "workstream": "Publish",
       "title": "Test YouTube upload with Sam's real Google account (private-lock limitation shown)",
-      "priority": "P0",
+      "priority": "P2",
       "size": "S",
       "owner": "User",
       "status": "To do",
@@ -990,7 +1163,7 @@
       "acceptance": "A test video appears in YouTube Studio with the expected title, tags and description, and the app shows the private-lock message.",
       "verify": "Manual: upload in the app, check YouTube Studio.",
       "branch": "",
-      "notes": "",
+      "notes": "2026-11-11: Sam says YouTube upload is the least important feature; only work it once everything else works.",
       "legacy": "",
       "findings": [],
       "decisions": [],
@@ -1019,7 +1192,8 @@
       "findings": [],
       "decisions": [],
       "resolves": [],
-      "tier": "Light"
+      "tier": "Light",
+      "context": "Docs only. Read CLAUDE.md Module C and section 0.5 (loudness: master to -21 LUFS, light chain, HPF/compressor off by default) and core/master.py. Rewrite Module C to match the code. No code changes."
     },
     {
       "id": "T3",
@@ -1096,7 +1270,8 @@
       "findings": [],
       "decisions": [],
       "resolves": [],
-      "tier": "Deep"
+      "tier": "Deep",
+      "context": "Deferred. Do not start until Sam has scoped it. Read CLAUDE.md section 0.5 (Scope: repurpose deferred) and Docs/measurements.md 'Waveform editor' (EditList.timeline, Insert/Cut ops) first."
     },
     {
       "id": "T6",
@@ -1120,7 +1295,8 @@
       "findings": [],
       "decisions": [],
       "resolves": [],
-      "tier": "Light"
+      "tier": "Light",
+      "context": "Run the full pytest and a real-take FINISH to exactly 8 h; record timings in Docs/measurements.md under 'FINISH speed'. Read only that bullet and 'Real-asset render' there. Needs Sam's real take (ask if you cannot find it)."
     },
     {
       "id": "T7",
@@ -1259,7 +1435,9 @@
         "D04"
       ],
       "resolves": [],
-      "tier": "Standard"
+      "tier": "Standard",
+      "context": "Takes library already exports/imports .hushtake zips (see Docs/measurements.md 'Takes library (T10)'; core/takes.py, ui/takes.py). Check what is already done before adding anything; build only the gaps: plain audio import as a take, export as wav/flac/mp3 and as MP4, drag and drop. Imports must go through core/session.py import path (44.1k to 48k resample).",
+      "check": "\"C:\\Users\\chadj\\pika_meditate\\.venv\\Scripts\\python.exe\" -m pytest -q -m \"not slow\""
     },
     {
       "id": "T12",
@@ -1341,7 +1519,9 @@
         "D01"
       ],
       "resolves": [],
-      "tier": "Standard"
+      "tier": "Standard",
+      "context": "Read Docs/measurements.md 'Waveform editor (T12)': it already has an Open in Audacity -> Bring back round trip (for_audacity.wav out, audacity_N.wav back, EditList.source). Extend it with the label track and launch-from-Takes/review; do not rebuild it. Files: core/editing.py, ui/editor.py.",
+      "check": "\"C:\\Users\\chadj\\pika_meditate\\.venv\\Scripts\\python.exe\" -m pytest -q -m \"not slow\""
     },
     {
       "id": "T15",
@@ -1377,7 +1557,7 @@
       "milestone": "M5",
       "workstream": "Publish",
       "title": "YouTube thumbnail: choose or upload one per video",
-      "priority": "P1",
+      "priority": "P2",
       "size": "M",
       "owner": "Codex",
       "status": "To do",
@@ -1391,12 +1571,14 @@
       "acceptance": "An uploaded video shows the chosen thumbnail in YouTube Studio. A wrong-size or oversized image is flagged before upload.",
       "verify": "Tested against the fake server in tests; real account via T1.",
       "branch": "",
-      "notes": "YouTube only allows custom thumbnails on verified channels; show that plainly if the call is refused.",
+      "notes": "2026-11-11: Lowest priority with the rest of the YouTube upload work (see T1).",
       "legacy": "",
       "findings": [],
       "decisions": [],
       "resolves": [],
-      "tier": "Standard"
+      "tier": "Standard",
+      "context": "YouTube work is lowest priority (Sam's decision). Read CLAUDE.md Module E and core/youtube_publisher.py only. Test against the fake server in tests; no real account.",
+      "check": "\"C:\\Users\\chadj\\pika_meditate\\.venv\\Scripts\\python.exe\" -m pytest -q -m \"not slow\""
     },
     {
       "id": "T17",
@@ -1424,7 +1606,8 @@
         "D02"
       ],
       "resolves": [],
-      "tier": "Standard"
+      "tier": "Standard",
+      "context": "Deferred by Sam (D02). Do not start. Read CLAUDE.md section 0.5 (Raw source: Riverside export 44.1 kHz mono, gated pauses) if it is ever reopened."
     },
     {
       "id": "T18",
@@ -1452,7 +1635,8 @@
         "D03"
       ],
       "resolves": [],
-      "tier": "Standard"
+      "tier": "Standard",
+      "context": "Blocked on decision D03. Do not start. Lowest priority with the YouTube work."
     },
     {
       "id": "T19",
@@ -1514,7 +1698,7 @@
       "priority": "P1",
       "size": "L",
       "owner": "Claude",
-      "status": "To do",
+      "status": "Done",
       "depends": [],
       "zone": "Z-CORE",
       "files": "build/ (PyInstaller spec, Inno Setup script), requirements.txt, core/ffmpeg_tools.py, config/",
@@ -1522,8 +1706,8 @@
       "scope": "Build the app with PyInstaller (one-folder), bundling Python, PyQt6, numpy/scipy, sounddevice, FFmpeg, deep-filter.exe, the Montserrat font, assets and config. Wrap it with Inno Setup into Hush-Studio-Setup-<version>.exe: per-user install (no admin), Start menu and desktop shortcut, uninstaller, keeps data and takes on upgrade. Settings, takes and logs live in the user's app-data folder, not the install folder. First run checks the microphone and tells her what to do if Windows blocks it. Check licences of everything bundled.",
       "acceptance": "On a clean Windows 10/11 PC (or fresh VM) with nothing installed, Setup.exe installs, the app records, renders and uploads, and uninstalling leaves her takes.",
       "verify": "Install on a clean VM; run the full flow; run the installer twice (upgrade) and confirm takes and settings survive.",
-      "branch": "",
-      "notes": "The installer will be unsigned, so Windows SmartScreen will warn (More info, then Run anyway). Code signing costs money; decide later. The same Setup.exe can be copied to a flash drive for an offline first install.",
+      "branch": "claude/T21-windows-installer-setup-exe-that",
+      "notes": "Review clean: checked the full branch diff against main, including PyInstaller/Inno Setup layout, frozen resource and app-data paths, bundled FFmpeg/deep-filter runtime checks, first-run microphone check, app mutex, upgrade/uninstall data scoping, self-test, and verification scripts; no blocking correctness bugs found. Follow-ups (non-blocking): clean-VM install/upgrade/uninstall plus manual record/render/upload still needs a person as documented in the task notes.",
       "legacy": "",
       "findings": [],
       "decisions": [],
@@ -1538,7 +1722,7 @@
       "priority": "P1",
       "size": "M",
       "owner": "Claude",
-      "status": "To do",
+      "status": "Blocked",
       "depends": [
         "T21"
       ],
@@ -1548,15 +1732,17 @@
       "scope": "Single version number in core/app_info.py. A workflow that runs on a version tag (v0.3.0) on a Windows runner: run the tests, build the installer (T21), and publish a GitHub Release with the Setup.exe, its SHA-256 and the changelog notes. Add a short RELEASING.md: bump version, tag, push. Where it publishes follows decision D05. Per D05 the workflow publishes the Release to the separate public Hush-Studio-Releases repo (the private source repo cannot serve anonymous downloads). That needs a fine-grained GitHub token limited to the releases repo, stored as an Actions secret in the source repo.",
       "acceptance": "Pushing a tag produces a Release with a working Setup.exe and checksum, with no manual build.",
       "verify": "Tag a pre-release and download and run the installer.",
-      "branch": "",
-      "notes": "",
+      "branch": "claude/T22-github-actions-build-and-publish",
+      "notes": "Review clean: re-reviewed claude/T22-github-actions-build-and-publish against main; checked release_info.py validation, workflow trigger and dry-run path, pinned FFmpeg/deep-filter hashes, quick tests, installer/self-test invocation, checksum/artifact outputs, and Hush-Studio-Releases publication and rerun behavior. Targeted tests: tests/test_release.py, 4 passed; RC tag metadata path verified. Follow-ups (non-blocking): workflow YAML is not syntax-tested locally.\n\nAUTOPILOT STOPPED (2026-11-11): the reviewer finished twice without recording a result",
       "legacy": "",
       "findings": [],
       "decisions": [
         "D05"
       ],
       "resolves": [],
-      "tier": "Standard"
+      "tier": "Standard",
+      "context": "Read RELEASING-related decision D05 in the plan (--show T22) and build/build.ps1 plus core/app_info.py APP_VERSION only. Installer facts: Docs/measurements.md 'Installer (T21)'. Workflow publishes to the separate Hush-Studio-Releases repo.",
+      "check": "\"C:\\Users\\chadj\\pika_meditate\\.venv\\Scripts\\python.exe\" -m pytest -q -m \"not slow\""
     },
     {
       "id": "T23",
@@ -1584,7 +1770,149 @@
         "D05"
       ],
       "resolves": [],
-      "tier": "Standard"
+      "tier": "Standard",
+      "context": "Depends on the release layout from T22 (Setup.exe + SHA-256 in Hush-Studio-Releases, D05). Read Docs/measurements.md 'Installer (T21)' (per-user install, AppMutex HushStudioAppMutex, data in %LOCALAPPDATA%\\HushStudio survives upgrade). Use a fake releases endpoint in tests.",
+      "check": "\"C:\\Users\\chadj\\pika_meditate\\.venv\\Scripts\\python.exe\" -m pytest -q -m \"not slow\""
+    },
+    {
+      "id": "T24",
+      "milestone": "M0",
+      "workstream": "Distribution",
+      "title": "Laptop test fixes: import works installed, intro in video, no beep",
+      "priority": "P0",
+      "size": "S",
+      "owner": "Claude",
+      "status": "Blocked",
+      "depends": [],
+      "zone": "Z-CORE",
+      "files": "core/session.py, core/renderer.py, core/denoise.py, core/diagnostics.py, build/hush_studio.spec, build/check_bundle.py, assets/intro_card.mp4, ui/main_window.py, .gitignore",
+      "why": "Sam's first laptop test (2026-11-11, debug bundle HushStudio-debug-2026-11-11_140208.zip): importing wav and mp3 failed, the rendered video had no intro visuals, and a soft beep was in the recording.",
+      "scope": "Import: FFmpeg children ran without stdin redirected (invalid handle in the console-less installed app); now stdin=DEVNULL + CREATE_NO_WINDOW and a readable error. Worker errors are now logged. Intro: the installer never bundled the intro, so a clean install had 'Intro: none'; assets/intro_card.mp4 is now bundled and checked. Beep: the plane-guard chime played through laptop speakers into the mic; now off unless setting chime_on=true.",
+      "acceptance": "On a clean install: importing wav, mp3, m4a and flac works; the rendered video starts with the intro card; a take recorded with laptop speakers has no beep. Failed imports leave a traceback in hush-studio.log.",
+      "verify": "pytest; build installer; verify_install.ps1; import a wav/mp3 in the installed app; render and play the video.",
+      "branch": "claude/T24-laptop-test-fixes-import-works",
+      "notes": "Review clean: inspected the T24 diff against main for import error handling, stdin/CREATE_NO_WINDOW coverage for FFmpeg children, bundled intro packaging and first-run seeding, self-test coverage, and opt-in chime behavior. Targeted tests passed: 11 passed in tests/test_t24_laptop_fixes.py. No blocking correctness findings. Follow-ups (non-blocking): full-suite completion can be confirmed separately if desired.\n\nAUTOPILOT STOPPED (2026-11-11): the reviewer finished twice without recording a result",
+      "legacy": "",
+      "findings": [],
+      "decisions": [],
+      "resolves": [],
+      "tier": "Standard",
+      "context": "Read Docs/measurements.md 'Installer (T21)', 'deep-filter.exe quirks (T7)' and 'Logging (T19)'. Frozen app: core.config.bundle_root(); FFmpeg children need stdin=DEVNULL + CREATE_NO_WINDOW. Fixes are already in the branch; remaining work is verification on a clean install.",
+      "check": "\"C:\\Users\\chadj\\pika_meditate\\.venv\\Scripts\\python.exe\" -m pytest -q -m \"not slow\""
+    },
+    {
+      "id": "T25",
+      "milestone": "M0",
+      "workstream": "Audio quality",
+      "title": "Distortion and cut-off phrase endings on a quiet take",
+      "priority": "P0",
+      "size": "L",
+      "owner": "Codex",
+      "status": "In progress",
+      "depends": [],
+      "zone": "Z-CORE",
+      "files": "core/denoise.py, core/master.py, core/auto_edit.py, core/vad.py, core/session.py, tests/",
+      "why": "Sam's rendered video sounded distorted and phrase endings were cut off. Her take was very quiet (raw peak -29.5 dBFS, -48.7 LUFS, Samson Q2U), so mastering added about +27 dB, which lifts noise and denoiser artefacts equally.",
+      "scope": "Reproduce with her raw.flac (Takes/2026-11-11_135033 on her laptop: get it) or a synthetic quiet take. Find where phrase endings are lost (deep-filter noise floor / -65 dBFS floor, VAD, pause shaping or the tail) and why the result is distorted (gain staging: denoise before level-up, max_gain_db 30). Fix so a quiet take sounds as clean as a normal one: gain-stage (normalise toward a sensible level before denoise), make thresholds relative, and keep the 0-dropout guarantee. Add regression tests with a quiet take.",
+      "acceptance": "A take recorded 20 dB quieter than normal comes out with no cut phrase endings and no added distortion; core.diagnostics shows no dropouts at any stage; judged by ear on Sam's real quiet take.",
+      "verify": "pytest incl. new quiet-take tests; python -m core.diagnostics on a render; listen.",
+      "branch": "codex/T25-distortion-and-cut-off-phrase",
+      "notes": "Fixed review findings: restored fixed -65 dBFS DeepFilterNet floor for normal-level takes; froze one live-take staging gain across segments; added floor, live-segment, and real quiet-take deep-filter regressions. Verified with post-merge pytest: 316 passed, 9 skipped. core.diagnostics on .work/t6-real/take reports gaps=0 for raw, clean, session.m4a, and output_8h.mp4.\n\nREVIEW FINDINGS, round 2 (Claude, 2026-11-11):\n1) core/denoise.py:288 deepfilter_array: when peak*stage_scale > DFN_HEADROOM the input scale is DFN_HEADROOM/peak/stage_scale; it must be DFN_HEADROOM/peak (so peak*scale = 0.9). Dividing by stage_scale again attenuates the model input far below the raw level (e.g. frozen +24 dB gain from a quiet first live segment, later segment peak 0.5 -> scale ~0.11, ~19 dB quieter than raw), which re-creates the quiet-input cut-off-phrase defect in live REC. Offline whole-file path is unaffected (gain derived from same peak), so add a test with explicit/frozen stage_gain_db and a louder segment asserting the model input peak is ~0.9 and the output is returned to source level.",
+      "legacy": "",
+      "findings": [],
+      "decisions": [],
+      "resolves": [],
+      "tier": "Standard",
+      "handback": {
+        "from": "Claude",
+        "to": "Codex",
+        "round": 2
+      }
+    },
+    {
+      "id": "T26",
+      "milestone": "M0",
+      "workstream": "Review UI",
+      "title": "Import gives the raw audio, then clear choices: Remove noise, Auto-edit, Normalise, Polish",
+      "priority": "P0",
+      "size": "L",
+      "owner": "Claude",
+      "status": "To do",
+      "depends": [
+        "T24"
+      ],
+      "zone": "Z-UI",
+      "files": "ui/main_window.py, ui/workers.py, ui/review.py, ui/editor.py, core/session.py",
+      "why": "Sam wants to import audio and get the raw audio in the editor, then choose what to apply, instead of everything running automatically.",
+      "scope": "After import, show the raw take straight away (Import step only). Then a clear panel of steps, each a button with a plain description and undo: Remove background noise, Auto-edit pauses, Remove plane noise, Normalise, Polish, plus an 'Do all (recommended)' one-click. Live recordings keep the automatic path but use the same panel. Edits and processing stay undoable; raw.flac stays untouched.",
+      "acceptance": "Importing a file opens the raw audio in under a few seconds with no processing run; each step can be applied, previewed and undone separately; 'Do all' reproduces today's result.",
+      "verify": "pytest (UI tests); manual: import a wav, apply each step in turn, undo, Do all, render.",
+      "branch": "",
+      "notes": "",
+      "legacy": "",
+      "findings": [],
+      "decisions": [],
+      "resolves": [],
+      "tier": "Standard",
+      "context": "Read Docs/measurements.md 'Waveform editor (T12)', 'Auto-editor' and 'Denoise'. Import must open the raw audio at once with no processing; each step (denoise, auto-edit, plane noise, normalise, polish) is an undoable edit via core/editing.py ops. raw.flac stays untouched. UI tests: tests/test_ui.py (offscreen).",
+      "check": "\"C:\\Users\\chadj\\pika_meditate\\.venv\\Scripts\\python.exe\" -m pytest -q -m \"not slow\""
+    },
+    {
+      "id": "T27",
+      "milestone": "M0",
+      "workstream": "Audio quality",
+      "title": "Calibrate the mic and levels before recording",
+      "priority": "P0",
+      "size": "L",
+      "owner": "Claude",
+      "status": "To do",
+      "depends": [
+        "T24"
+      ],
+      "zone": "Z-UI",
+      "files": "ui/main_window.py, core/capture.py, core/mic_check.py, ui/widgets.py, core/audio_quality.py",
+      "why": "Sam's take was recorded 20+ dB too quiet (peak -29.5 dBFS on the Samson Q2U); we have no way to tell her, and no check of the PC and microphone setup before she records.",
+      "scope": "A Calibrate step before recording (first run and from Settings): choose the mic (warn about laptop-array vs USB mic, Krisp, wrong default), 5 s of quiet to measure the room floor, then she reads a sentence at her normal volume. Show plain advice (turn the mic up in Windows, move closer, too loud) with a live level meter and a target zone, store the measured floor and speech level per device, apply a calibrated input gain so a take is recorded at a healthy level, and warn at record time if the level is out of range. Also check sample rate, speakers vs headphones (beep/echo risk) and that no noise-suppression device is in the chain.",
+      "acceptance": "A quiet or loud mic is detected and she is told in plain words what to change; after calibration a normal-voice take peaks around -12 to -6 dBFS and the room floor is known; settings are remembered per device.",
+      "verify": "pytest for the level maths and advice; manual with the USB mic and the laptop mic.",
+      "branch": "",
+      "notes": "",
+      "legacy": "",
+      "findings": [],
+      "decisions": [],
+      "resolves": [],
+      "tier": "Standard",
+      "context": "Read Docs/measurements.md 'Capture diagnostics (T7)' (USB mic here: speech ~-40 LUFS, room ~-56 dBFS, WASAPI float can exceed 1.0) and 'Installer (T21)' (mic_check privacy switches). Reuse core/mic_check.py and core/audio_quality.py; per-device settings in HKCU.",
+      "check": "\"C:\\Users\\chadj\\pika_meditate\\.venv\\Scripts\\python.exe\" -m pytest -q -m \"not slow\""
+    },
+    {
+      "id": "T28",
+      "milestone": "M0",
+      "workstream": "Verification",
+      "title": "Retest on Sam's laptop: new installer, record, import, render, listen",
+      "priority": "P0",
+      "size": "M",
+      "owner": "User",
+      "status": "To do",
+      "depends": [
+        "T24",
+        "T25",
+        "T26",
+        "T27"
+      ],
+      "zone": "Z-DOCS",
+      "files": "build/, Docs/",
+      "why": "Close the loop on the 2026-11-11 test: every problem from that session must be gone on her laptop.",
+      "scope": "Build the installer, install on Sam's laptop, run the calibration, record a take, import a wav and an mp3, apply the processing steps, render and play the result, send a debug report, and check each item from the first test: import works, raw audio first with clear choices, intro visuals present, no cut-off phrase endings, no beep, no distortion.",
+      "acceptance": "All items from the first laptop test pass on her laptop; debug bundle shows no dropouts and a healthy level.",
+      "verify": "Manual on her laptop; python -m core.diagnostics on the bundle.",
+      "branch": "",
+      "notes": "",
+      "legacy": "",
+      "findings": [],
+      "decisions": [],
+      "resolves": [],
+      "tier": "User"
     }
   ]
 }
