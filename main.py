@@ -17,6 +17,7 @@ from ui import theme
 # before upgrading or uninstalling.
 APP_MUTEX = "HushStudioAppMutex"
 MIC_OK_KEY = "setup/mic_ok"
+CAL_OFFERED_KEY = "setup/calibration_offered"
 
 
 def _hold_app_mutex():
@@ -41,6 +42,7 @@ def first_run_mic_check(window) -> None:
     """Until the mic has worked once, check it at start-up and explain any Windows block."""
     settings = QSettings(SETTINGS_ORG, APP_NAME)
     if settings.value(MIC_OK_KEY, False, type=bool):
+        first_run_calibration(window)
         return
     log = log_setup.get_logger("capture")
     runner = _MicCheckRunner(window)
@@ -50,6 +52,7 @@ def first_run_mic_check(window) -> None:
                  res.ok, res.problem, res.device, res.peak_dbfs, res.detail)
         if res.ok:
             settings.setValue(MIC_OK_KEY, True)
+            first_run_calibration(window)
             return
         box = QMessageBox(window)
         box.setIcon(QMessageBox.Icon.Warning)
@@ -67,6 +70,16 @@ def first_run_mic_check(window) -> None:
 
     runner.finished.connect(done)
     runner.start()
+
+
+def first_run_calibration(window) -> None:
+    """T27: once the mic works, offer the one-minute Check mic step the first time (never again
+    automatically: Settings → Check mic, and record time, offer it for unchecked mics)."""
+    settings = QSettings(SETTINGS_ORG, APP_NAME)
+    if settings.value(CAL_OFFERED_KEY, False, type=bool) or window.current_calibration() is not None:
+        return
+    settings.setValue(CAL_OFFERED_KEY, True)
+    window.calibrate_mic(first_run=True)
 
 
 def main() -> int:

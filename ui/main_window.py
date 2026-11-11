@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLay
 
 from core.app_info import APP_NAME, SETTINGS_ORG
 from core.asset_cache import AssetCache
+from core.calibration import LIVE_MESSAGES, ZONE, CalibrationStore
 from core.config import DATA_ROOT, PROJECT_ROOT, TARGET_HOURS_OPTIONS, browse_start_dir, load_render_config
 from core.intros import IntroError, IntroLibrary
 from core.renderer import TakeTooShortError, fmt_hms, fmt_mmss, plan_render
@@ -157,8 +158,15 @@ class MainWindow(QMainWindow):
         mic_lbl.setObjectName("muted")
         pl.addWidget(mic_lbl)
         self.mic = QComboBox()
+        self.cal_store = CalibrationStore(self.settings)       # per-mic levels (T27), HKCU on Windows
+        self._cal_asked: set[str] = set()                      # mics we already offered a check for
         self._fill_mics()
+        self.mic.currentIndexChanged.connect(self._mic_changed)
         pl.addWidget(self.mic, 1)
+        self.btn_calibrate = QPushButton("Check mic")
+        self.btn_calibrate.setObjectName("link")
+        self.btn_calibrate.clicked.connect(lambda: self.calibrate_mic())
+        pl.addWidget(self.btn_calibrate)
         self.btn_intro = QPushButton()
         self.btn_intro.clicked.connect(self.choose_intro)
         pl.addWidget(self.btn_intro)
@@ -288,6 +296,7 @@ class MainWindow(QMainWindow):
         lay.addLayout(out)
 
         self.poll = QTimer(self, interval=100, timeout=self._poll_recorder)
+        self._mic_changed()
         self._update_intro_button()
         self._start_planner()
         self._set_mode("idle")
@@ -311,7 +320,7 @@ class MainWindow(QMainWindow):
             w.setVisible(mode in ("idle", "done") and getattr(self, "planner", None) is not None)
         if getattr(self, "planner", None) is not None:
             self.planner.recording = rec          # the recorder feeds the planner while recording
-        for w in (self.target, self.mic, self.btn_intro, self.guard_on):
+        for w in (self.target, self.mic, self.btn_intro, self.guard_on, self.btn_calibrate):
             w.setEnabled(mode in ("idle", "done"))
         if mode == "paused":
             self.light.set_state("paused")
@@ -393,22 +402,45 @@ class MainWindow(QMainWindow):
         DebugReportDialog(sessions, cur, cfg, self).exec()
 
     def _fill_mics(self):
-        self.mic.addItem("Default microphone", None)
-        try:
-            import sounddevice as sd
-            seen = set()
-            for i, d in enumerate(sd.query_devices()):
-                api = sd.query_hostapis(d["hostapi"])["name"]
-                if d["max_input_channels"] > 0 and api == "Windows WASAPI" and d["name"] not in seen:
-                    seen.add(d["name"])
-                    self.mic.addItem(d["name"], i)
-        except Exception:
-            pass
+        from .calibrate import list_mics
+        for label, dev in list_mics():
+            self.mic.addItem(label, dev)
         saved = self.settings.value("mic")
         if saved is not None:
             k = self.mic.findText(saved)
             if k >= 0:
                 self.mic.setCurrentIndex(k)
+
+    # ------------------------------------------------------------------ mic calibration (T27)
+
+    def current_mic_name(self) -> str:
+        """The real device behind the picker (the Windows default resolved to its name)."""
+        from .calibrate import resolve_device_name
+        return resolve_device_name(self.mic.currentData()) or self.mic.currentText()
+
+    def current_calibration(self):
+        return self.cal_store.get(self.current_mic_name())
+
+    def _mic_changed(self, *_):
+        c = self.current_calibration()
+        self.btn_calibrate.setText("Check mic again" if c else "Check mic")
+        self.btn_calibrate.setToolTip(c.summary() if c else "Measure the room and your voice once for this mic.")
+        self.vu.set_zone(ZONE if c else None)
+
+    def calibrate_mic(self, first_run: bool = False) -> bool:
+        """Settings → Check mic (and first run). True when a calibration was saved."""
+        from .calibrate import CalibrateDialog
+        mics = [(self.mic.itemText(i), self.mic.itemData(i)) for i in range(self.mic.count())]
+        dlg = CalibrateDialog(self.cal_store, mics, self.mic.currentText(), self, first_run=first_run)
+        ok = bool(dlg.exec()) and dlg.result is not None
+        if ok:
+            k = self.mic.findText(dlg.mic_label)
+            if k >= 0:
+                self.mic.setCurrentIndex(k)
+            self.settings.setValue("mic", self.mic.currentText())
+            self.message.setText("Microphone checked. Press record when you're ready.")
+        self._mic_changed()
+        return ok
 
     @property
     def intro_card(self) -> Path | None:
@@ -477,6 +509,21 @@ class MainWindow(QMainWindow):
 
     def start_recording(self):
         from core.capture import MicSource, Recorder
+        name = self.current_mic_name()
+        cal = self.cal_store.get(name)
+        if cal is None and name not in self._cal_asked:
+            self._cal_asked.add(name)               # ask once per mic per run, never nag
+            box = QMessageBox(self)
+            box.setWindowTitle("Check this microphone?")
+            box.setText("This microphone hasn't been checked yet.")
+            box.setInformativeText("A one-minute check sets your recording level so the take isn't too "
+                                   "quiet or too loud.")
+            check = box.addButton("Check mic", QMessageBox.ButtonRole.AcceptRole)
+            box.addButton("Record anyway", QMessageBox.ButtonRole.RejectRole)
+            box.exec()
+            if box.clickedButton() is check:
+                self.calibrate_mic()
+                return
         self.settings.setValue("mic", self.mic.currentText())
         self.settings.setValue("guard", "true" if self.guard_on.isChecked() else "false")
         self.session = self._new_session()
@@ -485,7 +532,9 @@ class MainWindow(QMainWindow):
             self.recorder = Recorder(self.session, source=MicSource(self.mic.currentData()),
                                      guard_enabled=self.guard_on.isChecked(),
                                      use_radar=self.guard_on.isChecked(),
-                                     on_radar=self.planner.on_recorder_snapshot if self.planner else None)
+                                     on_radar=self.planner.on_recorder_snapshot if self.planner else None,
+                                     input_gain_db=cal.gain_db if cal else 0.0,
+                                     floor_db=cal.floor_db if cal and not cal.digital_silence else None)
             self._reset_mic_warning()
             self.recorder.start()
         except Exception as e:
@@ -494,7 +543,9 @@ class MainWindow(QMainWindow):
         self.btn_open.hide()
         self.btn_upload.hide()
         self.btn_yt.hide()
-        self.out_label.setText(f"Recording to {self.session.dir.name} · noise removal: {self.recorder.status.denoise_backend}")
+        boost = f" · mic level {cal.gain_db:+.1f} dB" if cal and cal.gain_db else ""
+        self.out_label.setText(f"Recording to {self.session.dir.name} · noise removal: "
+                               f"{self.recorder.status.denoise_backend}{boost}")
         self.companion.say("recording")
         self._set_mode("recording")
         self.poll.start()
@@ -563,6 +614,9 @@ class MainWindow(QMainWindow):
         elif dropped:
             self.mic_warning.setText(MIC_DROP_WARNING)
             self._mic_warn_until = now + MIC_WARN_HOLD_S
+        elif getattr(s, "level_advice", "") and now >= self._mic_warn_until:
+            self.mic_warning.setText(LIVE_MESSAGES[s.level_advice])     # T27: voice out of range
+            self._mic_warn_until = now + 0.5
         self.mic_warning.setVisible(now < self._mic_warn_until)
         return clipped
 
