@@ -131,6 +131,22 @@ makes speaking hard → "Listen back (last 15 s)" while paused instead.
   listed first, "Copy to flash drive" after) with logs, system info, settings (secret keys dropped, values redacted), and for the
   chosen take capture.json + the `core.diagnostics` stage report. Audio only as ticked ~6 s clips around clipping / dropouts /
   lost sound (none ticked by default; D06: nothing is uploaded). `python -m core.diagnostics bundle.zip` prints the same report.
+- **Installer (T21, `build/`, `core/mic_check.py`, `core/selftest.py`):** `build\build.ps1` → PyInstaller one-folder
+  (`build/hush_studio.spec`, own `.work\build-venv`) → `check_bundle.py` → Inno Setup (`build/hush_studio.iss`) →
+  `dist\Hush-Studio-Setup-<APP_VERSION>.exe`: per-user (`%LOCALAPPDATA%\Programs\Hush Studio`, no admin), Start menu +
+  desktop shortcut, fixed AppId (upgrade in place), AppMutex `HushStudioAppMutex` (held by main.py). Installed, the app
+  is `sys.frozen`: `core.config.bundle_root()` = `_internal` (config, font, `tools/ffmpeg`, `tools/deepfilter`) and
+  `DATA_ROOT` = `%LOCALAPPDATA%\HushStudio` (Takes, Intros, cache, data/, logs; settings stay in HKCU), never listed in
+  the .iss, so upgrade and uninstall keep them. `HUSH_DATA_DIR` still wins; run from source nothing changes.
+  Measured: `deep-filter.exe` imports `VCRUNTIME140.dll`, absent on a clean Windows 10 → the spec ships it beside the
+  exe and `check_bundle.py` fails any helper exe that needs a VC/MinGW runtime not beside it (gyan FFmpeg needs only
+  OS DLLs). `HushStudio.exe --self-test <report.json>` runs headless: FFmpeg/libx264, ffprobe, deep-filter, libsndfile,
+  PortAudio, font, TLS/google-auth, and import → denoise → auto-edit → master → 1 h exact render of a synthetic 60 s
+  take (≈ 15 s from source). First run: `mic_check` reads the three Windows privacy switches (HKLM/HKCU ConsentStore
+  `microphone`, `\NonPackaged`) and listens 0.5 s (exact zeros = blocked/muted); plain steps + "Open Windows settings"
+  (`ms-settings:privacy-microphone`), repeated at start-up until the mic has worked once (`setup/mic_ok`).
+  Licences: `build/THIRD-PARTY-NOTICES.md` (PyQt6 + gyan FFmpeg are GPL: fine to give away, not to sell closed).
+  `build\verify_install.ps1` automates install → self-test → upgrade → uninstall with data-survival checks on a VM.
 - **Takes library (T10, D04, `core/takes.py`, `ui/takes.py`):** one folder per take in `Takes/` (was `sessions/`; renamed once at
   startup, nothing deleted), each with `take.json` (name, created, notes, uploaded). Folder name stays the timestamp; rename only edits
   `name`. Status derived from files: raw → edited (edits.json) → rendered (output_*h.mp4) → uploaded (take.json). Takes screen (header
