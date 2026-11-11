@@ -26,7 +26,7 @@ from PyQt6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLay
 
 from core.app_info import APP_NAME, SETTINGS_ORG
 from core.asset_cache import AssetCache
-from core.config import DATA_ROOT, PROJECT_ROOT, TARGET_HOURS_OPTIONS, load_render_config
+from core.config import DATA_ROOT, PROJECT_ROOT, TARGET_HOURS_OPTIONS, browse_start_dir, load_render_config
 from core.intros import IntroError, IntroLibrary
 from core.renderer import TakeTooShortError, fmt_hms, fmt_mmss, plan_render
 from core.session import Session
@@ -422,7 +422,7 @@ class MainWindow(QMainWindow):
 
     def choose_intro(self):
         from .intros import IntrosDialog
-        IntrosDialog(self.intros, self, str(PROJECT_ROOT)).exec()
+        IntrosDialog(self.intros, self, str(browse_start_dir())).exec()
         self._update_intro_button()
 
     def _update_intro_button(self):
@@ -585,7 +585,7 @@ class MainWindow(QMainWindow):
 
     def import_take(self):
         f, _ = QFileDialog.getOpenFileName(self, "Import a take (raw Riverside export, wav, mp3…)",
-                                           str(PROJECT_ROOT), "Audio (*.wav *.flac *.mp3 *.m4a *.aac)")
+                                           str(browse_start_dir()), "Audio (*.wav *.flac *.mp3 *.m4a *.aac)")
         if not f:
             return
         self.import_file(Path(f))

@@ -32,3 +32,6 @@ Takes/
 ops/serve.log
 .pytest-temp*/
 .review-tmp*/
+
+# installer build output (build/build.ps1)
+dist/

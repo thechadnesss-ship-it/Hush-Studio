@@ -1,4 +1,4 @@
-# Runtime (also needs FFmpeg >= 6 on PATH, or PIKA_FFMPEG_DIR set)
+# Runtime (also needs FFmpeg >= 6 on PATH, or PIKA_FFMPEG_DIR set; the installer bundles it, see build/README.md)
 numpy>=1.26
 scipy>=1.11
 soundfile>=0.12

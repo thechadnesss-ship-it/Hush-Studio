@@ -2,14 +2,50 @@
 from __future__ import annotations
 
 import os
+import sys
 import tomllib
 from dataclasses import asdict, dataclass, fields, replace
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-# Where recordings, caches and app data go. The USB launcher points this at the user's PC
-# (Videos\Hush Studio) so nothing heavy is written to a slow flash drive.
-DATA_ROOT = Path(os.environ["HUSH_DATA_DIR"]) if os.environ.get("HUSH_DATA_DIR") else PROJECT_ROOT
+from .app_info import SETTINGS_ORG
+
+# True inside the installed app (PyInstaller one-folder build, see build/).
+FROZEN = bool(getattr(sys, "frozen", False))
+
+
+def bundle_root() -> Path:
+    """Read-only program files: config/, assets/, tools/. The repo when run from source, the
+    install folder's `_internal` (PyInstaller's sys._MEIPASS) when installed."""
+    meipass = getattr(sys, "_MEIPASS", None)
+    if FROZEN and meipass:
+        return Path(meipass)
+    return Path(__file__).resolve().parent.parent
+
+
+def resolve_data_root(environ=os.environ, frozen: bool = FROZEN, project_root: Path | None = None) -> Path:
+    """Where takes, intros, caches, the YouTube token and the sky history go.
+
+    1. HUSH_DATA_DIR (the USB launcher points it at the PC's Videos\\Hush Studio);
+    2. installed app: %LOCALAPPDATA%\\HushStudio (next to the logs), never the install folder,
+       so upgrades and the uninstaller leave Sam's takes and settings alone;
+    3. run from source: the repo folder (unchanged developer behaviour)."""
+    if environ.get("HUSH_DATA_DIR"):
+        return Path(environ["HUSH_DATA_DIR"])
+    if frozen:
+        base = environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+        return Path(base) / SETTINGS_ORG
+    return project_root or bundle_root()
+
+
+PROJECT_ROOT = bundle_root()
+DATA_ROOT = resolve_data_root(project_root=PROJECT_ROOT)
+
+
+def browse_start_dir() -> Path:
+    """Where Open-file dialogs start: her own folders in the installed app, not the program files."""
+    return Path.home() if FROZEN else PROJECT_ROOT
+
+
 DEFAULT_RENDER_TOML = PROJECT_ROOT / "config" / "render.toml"
 
 FIT_POLICIES = ("nearest", "at_least", "exact")

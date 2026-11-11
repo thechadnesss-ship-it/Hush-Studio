@@ -17,6 +17,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Callable, Iterable, Sequence
 
+from .config import FROZEN, bundle_root
+
 MIN_FFMPEG_MAJOR = 6
 
 # Don't flash a console window when called from the PyQt GUI on Windows.
@@ -34,8 +36,7 @@ def _candidates(name: str) -> Iterable[Path]:
     env_dir = os.environ.get("PIKA_FFMPEG_DIR")
     if env_dir:
         yield Path(env_dir) / exe
-    bundled = Path(__file__).resolve().parent.parent / "tools" / "ffmpeg" / exe   # portable copy
-    yield bundled
+    yield bundled_tool_path(name)                # installed app / portable copy: tools/ffmpeg/
     found = shutil.which(name)
     if found:
         yield Path(found)
@@ -46,11 +47,22 @@ def _candidates(name: str) -> Iterable[Path]:
         yield from sorted(pkgs.glob(f"Gyan.FFmpeg*/ffmpeg-*/bin/{exe}"), reverse=True)
 
 
+def bundled_tool_path(name: str) -> Path:
+    """Where the installer puts ffmpeg/ffprobe (build/hush_studio.spec bundles them there)."""
+    exe = f"{name}.exe" if sys.platform == "win32" else name
+    return bundle_root() / "tools" / "ffmpeg" / exe
+
+
 @lru_cache(maxsize=None)
 def find_tool(name: str) -> str:
     for cand in _candidates(name):
         if cand.is_file():
             return str(cand)
+    if FROZEN:
+        raise FFmpegError(
+            f"Part of Hush Studio is missing ({name}). Please run the Hush Studio installer again "
+            f"to repair it; your takes and settings are kept."
+        )
     raise FFmpegError(
         f"{name} not found. Install FFmpeg >= {MIN_FFMPEG_MAJOR} "
         f"(e.g. `winget install Gyan.FFmpeg`) or set PIKA_FFMPEG_DIR."
