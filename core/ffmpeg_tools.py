@@ -94,7 +94,8 @@ def check_ffmpeg_version() -> str:
 
 def run(args: Sequence[str], check: bool = True) -> subprocess.CompletedProcess:
     proc = subprocess.run(
-        list(args), capture_output=True, text=True, encoding="utf-8", errors="replace", **_POPEN_FLAGS
+        list(args), capture_output=True, text=True, encoding="utf-8", errors="replace",
+        stdin=subprocess.DEVNULL, **_POPEN_FLAGS,  # no console when installed: never inherit stdin
     )
     if check and proc.returncode != 0:
         raise FFmpegError(_fmt_failure(args, proc.returncode, proc.stderr))

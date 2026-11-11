@@ -531,8 +531,15 @@ class MainWindow(QMainWindow):
         self.message.setText(detail)
         if self.companion.mood != mood or mood == "amber":
             self.companion.say(mood, s.message.split(" (")[0] if mood == "amber" else None)
-        if s.chime:
-            s.chime = False
+        self._maybe_chime(s)
+
+    def _maybe_chime(self, s):
+        if not s.chime:
+            return
+        s.chime = False
+        # Off by default: through laptop speakers the mic records the beep (Sam's take, 2026-11-11).
+        # Only for people on headphones who turn it on (setting "chime_on").
+        if str(self.settings.value("chime_on", "false")).lower() == "true":
             chime((660.0, 880.0) if s.light == "clear" else (520.0,))
 
     def _check_mic(self, s) -> bool:
@@ -740,6 +747,8 @@ class MainWindow(QMainWindow):
         worker.start()
 
     def _error(self, details: str):
+        from core.log_setup import get_logger
+        get_logger("app").error("worker failed:\n%s", details)
         self.progress.hide()
         self._set_mode("done")
         self.companion.say("error")

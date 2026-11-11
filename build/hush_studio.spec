@@ -57,6 +57,8 @@ datas = [
     (str(vcruntime), "tools/deepfilter"),
     (str(ROOT / "build" / "THIRD-PARTY-NOTICES.md"), "."),
 ]
+# Sam's intro card: without it a clean install has "Intro: none" and the video has no intro visuals.
+datas.append((str(_need(ROOT / "assets" / "intro_card.mp4", "Copy Sam's intro video to assets/intro_card.mp4.")), "assets"))
 # Sam's own companion GIFs (personal use only, see CLAUDE.md §6 Artwork) ship if present.
 for gif in sorted((ROOT / "assets").glob("companion_*.gif")):
     datas.append((str(gif), "assets"))
