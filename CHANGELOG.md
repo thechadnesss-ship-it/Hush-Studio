@@ -6,6 +6,23 @@ Format: `## [MAJOR.MINOR.PATCH] - YYYY-MM-DD` (see RELEASING.md).
 
 ## [0.3.0] - 2026-11-11
 
+- **Import now shows your audio untouched first.** After you import a recording you see the raw
+  take straight away, then choose what to do with a clear list of steps: Remove background noise,
+  Auto-edit pauses, Remove plane noise, Normalise and Polish. Each one has a plain description,
+  can be previewed and can be undone on its own, and "Do all" gives the usual full result.
+- **Check your microphone before recording.** A short calibration listens to the room, then you
+  read a sentence at your normal volume. Hush tells you in plain words if the mic is too quiet,
+  too loud, or the wrong one (laptop mic, Krisp), and warns you during recording if the level drops.
+- **Made for your microphone.** Hush now recognises the Samson Q2U, Rode NT1 and Fifine, and
+  opens the Q2U directly so Windows does not change the sound. If another program is using the
+  mic it falls back automatically, so recording always works.
+- **Fixed: import failing in the installed app**, the intro video missing from the finished
+  video, a stray beep, and distortion or cut-off ends of phrases on quiet recordings.
+- **Thumbnails with Canva.** An "Open in Canva" button, and Hush picks up the newest picture you
+  export so it can be used as the thumbnail.
+- **Open in Audacity keeps your markers**, and takes can be imported and exported in more formats.
+- **Updates install themselves.** Help > Check for updates shows what is new, with an
+  "Update now" button that downloads, checks and installs the new version.
 - **Installer.** Hush Studio now comes as one `Hush-Studio-Setup-<version>.exe`: double-click, no
   admin needed, no Python or FFmpeg to install. Upgrading keeps all takes, intros and settings.
 - **First-run microphone check.** If Windows is blocking the microphone, the app says which
