@@ -121,6 +121,27 @@ def test_deepfilter_floor_stays_at_validated_level_for_normal_take(monkeypatch, 
     assert seen == [pytest.approx(-65.0, abs=0.5)]
 
 
+def test_deepfilter_frozen_stage_gain_caps_louder_segment_once(monkeypatch, tmp_path):
+    """A frozen live-take gain must not attenuate a later, louder segment twice."""
+    seen = []
+
+    def fake_deepfilter(src, dst, attenuation_limit_db=100.0, post_filter=False):
+        audio, sr = sf.read(src, dtype="float32")
+        seen.append(float(np.abs(audio).max(initial=0.0)))
+        sf.write(dst, audio, sr, subtype="FLOAT")
+        return dst
+
+    monkeypatch.setattr("core.denoise.deepfilter_file", fake_deepfilter)
+    t = np.arange(SR * 2, dtype=np.float32) / SR
+    louder = (0.5 * np.sin(2 * np.pi * 220 * t)).astype(np.float32)
+    from core.denoise import deepfilter_array
+    denoised = deepfilter_array(louder, SR, workers=1, work_dir=tmp_path, stage_gain_db=24.0)
+
+    assert seen == [pytest.approx(0.9, abs=0.01)]
+    assert np.max(np.abs(denoised)) == pytest.approx(np.max(np.abs(louder)), abs=0.01)
+    assert rms_db(denoised) == pytest.approx(rms_db(louder), abs=0.05)
+
+
 def test_quiet_take_keeps_phrase_endings_and_has_no_dropouts():
     """A take 20 dB below normal must keep the same relative VAD/edit path."""
     from core.audio_quality import analyze

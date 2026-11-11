@@ -285,7 +285,7 @@ def deepfilter_array(x: np.ndarray, sr: int = SR, attenuation_limit_db: float = 
     stage_scale = np.float32(10 ** (stage_gain_db / 20))
     # Protect the CLI after the quiet-take gain stage. The inverse scale is applied to the
     # output below so denoising remains level-neutral for diagnostics and downstream mastering.
-    scale = np.float32(DFN_HEADROOM / peak / stage_scale if peak * stage_scale > DFN_HEADROOM else stage_scale)
+    scale = np.float32(DFN_HEADROOM / peak if peak * stage_scale > DFN_HEADROOM else stage_scale)
     # Keep the measured -65 dBFS floor needed for phrase tails. Raising it for a normal-level
     # take makes digital-silence pauses noisier and regresses the validated dropout fix.
     floor = np.float32(10 ** (DFN_FLOOR_DBFS / 20))
