@@ -7,3 +7,4 @@ requires-python = ">=3.11"
 pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "-ra"
+markers = ["slow: takes more than ~5 s (excluded from the Narthen quick check; run plain pytest before merging)"]
