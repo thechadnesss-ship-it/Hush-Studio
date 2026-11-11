@@ -2,6 +2,8 @@
   "meta": {
     "project": "Hush Studio",
     "worktree_prefix": "hush-studio",
+    "claude_access": "full",
+    "codex_access": "full",
     "title": "Hush Studio Build Plan",
     "subtitle": "Hush Studio: the recording and render app for the Sam Katz Hypnosis channel. Migrated 2026-11-10 from ops/state.json.",
     "owners": {
@@ -9,15 +11,27 @@
       "Codex": "Auto-edit, DSP, verification runs",
       "User": "Decisions, real-account tests, content, approvals",
       "Either": "Unassigned. Claim before starting."
-    }
+    },
+    "worktree_copy": [
+      "tools/deepfilter"
+    ]
   },
   "guide": [
     {
       "heading": "What this is",
       "rows": [
-        ["Purpose", "Task plan for Hush Studio (sound recording app, repo folder pika_meditate). Narthen Control reads and edits this file."],
-        ["Architecture", "CLAUDE.md is the architectural source of truth. Render speed is the #1 requirement: encode each unique piece once, build the long video by stream-copy."],
-        ["Source of truth", "Docs/Engine Build Plan/engine_plan.json (path kept from Narthen Control's defaults). The workbook is generated from it; never edit the .xlsx directly."]
+        [
+          "Purpose",
+          "Task plan for Hush Studio (sound recording app, repo folder pika_meditate). Narthen Control reads and edits this file."
+        ],
+        [
+          "Architecture",
+          "CLAUDE.md is the architectural source of truth. Render speed is the #1 requirement: encode each unique piece once, build the long video by stream-copy."
+        ],
+        [
+          "Source of truth",
+          "Docs/Engine Build Plan/engine_plan.json (path kept from Narthen Control's defaults). The workbook is generated from it; never edit the .xlsx directly."
+        ]
       ]
     }
   ],
@@ -51,6 +65,12 @@
       "name": "Publishing and integrations",
       "goal": "Manage intros, set YouTube thumbnails, and connect Riverside and Canva.",
       "exit": "Intros can be uploaded and swapped; thumbnails upload with the video; Riverside and Canva workflows decided and built."
+    },
+    {
+      "id": "M6",
+      "name": "Install, update and diagnostics",
+      "goal": "Sam installs the latest build with one download, the app updates itself from GitHub, and every problem she hits leaves logs (and, with her consent, audio) that we can debug from.",
+      "exit": "A Setup.exe on GitHub Releases installs on a clean Windows PC; the app offers updates; a debug bundle from her PC can be opened with core.diagnostics."
     },
     {
       "id": "M3",
@@ -89,8 +109,8 @@
       "options": "Build our own waveform editor in the PyQt app; only hand off to Audacity; both.",
       "recommendation": "Both. A simple in-app editor (select, cut, delete, silence, undo, zoom, play, plus buttons for the automated features) so Sam never leaves the app, and an Open in Audacity round-trip for anything heavier.",
       "decider": "User",
-      "status": "Open",
-      "outcome": ""
+      "status": "Decided",
+      "outcome": "2026-11-10: Accepted the recommendation. Both. A simple in-app editor (select, cut, delete, silence, undo, zoom, play, plus buttons for the automated features) so Sam never leaves the app, and an Open in Audacity round-trip for anything heavier."
     },
     {
       "id": "D02",
@@ -98,8 +118,8 @@
       "options": "Drag/watch-folder import of Riverside exports; Riverside API (if her plan includes it); both.",
       "recommendation": "Start with a smooth import of Riverside exports (watch folder + drag-in, auto-detect 44.1 kHz mono). Add the API only if her plan exposes recording downloads.",
       "decider": "User",
-      "status": "Open",
-      "outcome": "Needs: which Riverside plan does Sam have, and does she want pull-from-Riverside inside the app?"
+      "status": "Decided",
+      "outcome": "2026-11-10: let leave this feaute for a future update"
     },
     {
       "id": "D03",
@@ -107,8 +127,8 @@
       "options": "Open Canva with a thumbnail template and import the exported PNG; Canva Connect API (OAuth, export design); both.",
       "recommendation": "Start with open-in-Canva plus importing the exported PNG from a watched folder. Connect API later if Sam wants one-click export from inside the app.",
       "decider": "User",
-      "status": "Open",
-      "outcome": "Needs: does Sam already have a Canva thumbnail template to reuse?"
+      "status": "Decided",
+      "outcome": "2026-11-10: Accepted the recommendation. Start with open-in-Canva plus importing the exported PNG from a watched folder. Connect API later if Sam wants one-click export from inside the app."
     },
     {
       "id": "D04",
@@ -116,45 +136,736 @@
       "options": "Folder per take under a user-chosen Takes folder; single-file bundle; database index.",
       "recommendation": "Folder per take (raw audio, edit list, notes, metadata), in a Takes folder Sam can see in Explorer, with an exported .hushtake zip as the shareable form.",
       "decider": "User",
-      "status": "Open",
-      "outcome": ""
+      "status": "Decided",
+      "outcome": "2026-11-10: Accepted the recommendation. Folder per take (raw audio, edit list, notes, metadata), in a Takes folder Sam can see in Explorer, with an exported .hushtake zip as the shareable form."
+    },
+    {
+      "id": "D05",
+      "question": "Where do installable builds live, and does the source repo stay public?",
+      "options": "Releases on the existing public Hush-Studio repo; a separate small public repo that holds only installers (source repo goes private); private repo plus an access token inside the app.",
+      "recommendation": "A separate public repo for installers only (for example Hush-Studio-Releases), and make the source repo private. The updater then downloads anonymously with no token. Reason: the source repo is public today and its docs name Sam's channel and her home neighbourhood and default coordinates.",
+      "decider": "User",
+      "status": "Decided",
+      "outcome": "2026-11-10: Accepted the recommendation. Installers are published in a separate public repo (Hush-Studio-Releases) that holds only builds; the source repo Hush-Studio becomes private. The updater downloads from the releases repo without a token."
+    },
+    {
+      "id": "D06",
+      "question": "How do logs and audio get from Sam's PC to us, and what audio may be captured?",
+      "options": "Export a debug bundle zip that Sam sends herself (email or shared drive); upload to a private GitHub repo with a token; automatic upload.",
+      "recommendation": "Export a zip she sends herself. Logs and measurements always; audio only as short clips around a problem spot, shown to her and sent only if she ticks a box. Her sessions are client-facing hypnosis recordings, so nothing leaves the PC without her choosing it.",
+      "decider": "User",
+      "status": "Decided",
+      "outcome": "2026-11-10: Debug bundle is a zip Sam exports herself and hands over on a flash drive (email or a shared drive also fine). Logs and measurements always; audio only as opt-in clips she ticks. Nothing is uploaded automatically."
     }
   ],
   "audit": [],
   "baseline": [
-    ["pytest", "PASS 171", "As recorded in CLAUDE.md section 0.6 (2026-11-09). Re-run under T6."]
+    [
+      "pytest",
+      "PASS 171",
+      "As recorded in CLAUDE.md section 0.6 (2026-11-09). Re-run under T6."
+    ]
   ],
   "legacy": [],
   "budget": {
     "plans": "Claude and Codex subscription plans. Caps come from ops/state.json: 90% weekly, 95% five-hour.",
     "split": [
-      ["Hush Studio", "100%", "100%", "Single project for now."]
+      [
+        "Hush Studio",
+        "100%",
+        "100%",
+        "Single project for now."
+      ]
     ],
     "tiers": [
-      ["Light", "Sonnet, low effort", "Low effort", "Docs, plan updates, small fixes"],
-      ["Standard", "Sonnet, medium effort", "Medium effort", "Normal features and tests"],
-      ["Deep", "Opus, high effort, design only", "High effort", "Risky DSP or pipeline changes"],
-      ["User", "-", "-", "Decisions and real-account tests that are yours"]
+      [
+        "Light",
+        "Sonnet, low effort",
+        "Low effort",
+        "Docs, plan updates, small fixes"
+      ],
+      [
+        "Standard",
+        "Sonnet, medium effort",
+        "Medium effort",
+        "Normal features and tests"
+      ],
+      [
+        "Deep",
+        "Opus, high effort, design only",
+        "High effort",
+        "Risky DSP or pipeline changes"
+      ],
+      [
+        "User",
+        "-",
+        "-",
+        "Decisions and real-account tests that are yours"
+      ]
     ],
     "rules": [
-      ["One task, one session", "Start each task fresh and paste `build_engine_plan.py --show <ID>`."],
-      ["Point at files", "Name the Key files from the task instead of asking an agent to explore."],
-      ["Pause, don't push through", "Near a usage limit, stop at a clean point and leave notes."]
+      [
+        "One task, one session",
+        "Start each task fresh and paste `build_engine_plan.py --show <ID>`."
+      ],
+      [
+        "Point at files",
+        "Name the Key files from the task instead of asking an agent to explore."
+      ],
+      [
+        "Pause, don't push through",
+        "Near a usage limit, stop at a clean point and leave notes."
+      ]
     ],
-    "usage": []
+    "usage": [
+      {
+        "week": "2026-W46",
+        "note": "auto (live from Claude status line and Codex logs)",
+        "claude": "63%",
+        "codex": "77%"
+      }
+    ]
   },
   "log": [
     {
       "date": "2026-11-10",
       "agent": "Claude",
-      "tasks": ["T1", "T2", "T3", "T4", "T5", "T6"],
+      "tasks": [
+        "T1",
+        "T2",
+        "T3",
+        "T4",
+        "T5",
+        "T6"
+      ],
       "text": "Migrated the six tasks from ops/state.json into Narthen Control's plan format. Task IDs unchanged."
     },
     {
       "date": "2026-11-10",
       "agent": "Claude",
-      "tasks": ["T7", "T8", "T9", "T10", "T11", "T12", "T13", "T14", "T15", "T16", "T17", "T18"],
+      "tasks": [
+        "T7",
+        "T8",
+        "T9",
+        "T10",
+        "T11",
+        "T12",
+        "T13",
+        "T14",
+        "T15",
+        "T16",
+        "T17",
+        "T18"
+      ],
       "text": "Re-planned after Sam's first test: audio distortion and cuts become P0 (M0). Added takes library, import/export, Audacity-style editor with an Edit button, open in Audacity, intro manager, thumbnails, Riverside and Canva. Decisions D01-D04 opened."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "User",
+      "tasks": [],
+      "text": "Decided D01: 2026-11-10: Accepted the recommendation. Both. A simple in-app editor (select, cut, delete, silence, undo, zoom, play, plus buttons for the automated features) so Sam never leaves the app, and an Open in Audacity round-trip for anything heavier."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "User",
+      "tasks": [],
+      "text": "Decided D02: 2026-11-10: let leave this feaute for a future update"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "User",
+      "tasks": [],
+      "text": "Decided D03: 2026-11-10: Accepted the recommendation. Start with open-in-Canva plus importing the exported PNG from a watched folder. Connect API later if Sam wants one-click export from inside the app."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "User",
+      "tasks": [],
+      "text": "Decided D04: 2026-11-10: Accepted the recommendation. Folder per take (raw audio, edit list, notes, metadata), in a Takes folder Sam can see in Explorer, with an exported .hushtake zip as the shareable form."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T7"
+      ],
+      "text": "T7: bisected the audio chain on Sam's real take. DeepFilterNet CLI dropouts (370 per 33 min) fixed; joins, clipping and capture diagnostics added. Ear check and a take from Sam's PC still pending"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T7"
+      ],
+      "text": "T7: ear check passed on the before/after clips (crackle fixed). Harsh/clipped still needs a take from Sam's PC"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T7"
+      ],
+      "text": "T7 follow-up (Z-UI, requested by user): level meter clipping warning, commit 6cbf6df on the T7 branch. Meter fully red for 2 s after any clip, peak tick amber within 6 dB, red 'Mic too loud' line with where to turn it down, plus a lost-buffer warning. UI tests: 7 passed"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T8"
+      ],
+      "text": "Checked T8 (dropouts) against the T7 fix: denoise was the likely cause (70 to 0 per 5 min on a quiet live input); guard, pause shaping and 8 h stitcher seams measured clean. Findings in T8 notes; T8 status unchanged"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T8"
+      ],
+      "text": "T8: review dialog shows lost sound per spot (and clipping) before render; cuts traced to T7's denoise dropouts, gap scans clean raw to 8 h output; Review, merge T7 first"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T7",
+        "T8"
+      ],
+      "text": "T7/T8: user deferred testing on Sam's PC to later; T7 is ready for review as is"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Codex",
+      "tasks": [
+        "T7"
+      ],
+      "text": "Reviewed T7 branch against main; no correctness findings; no code changes."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T8"
+      ],
+      "text": "T8: dropouts traced to deep-filter (fixed in T7); lost-sound/clipping shown in review; tests green"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Codex",
+      "tasks": [
+        "T8"
+      ],
+      "text": "T8: changes requested by Codex's review (round 1), back to Claude: 1) Report the total number of lost buffers separately from the capped number of reviewable spots (the review currently shows only the capped count)."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T8"
+      ],
+      "text": "T8: restored notes and the round 1 review findings, which a plan-sync bug (stale worktree copy) had overwritten; fixed in Narthen Control"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T8"
+      ],
+      "text": "T8 review round 1: lost_buffers total vs spots; accurate loss timestamps; tests green"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Codex",
+      "tasks": [
+        "T8"
+      ],
+      "text": "T8: changes requested by Codex's review (round 2), back to Claude: 1) ui/review.py only creates listen buttons for spots[:MAX_LOST_BUTTONS] (8), although capture.py stores up to 200 loss spots and the T8 requirement calls for a"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Codex",
+      "tasks": [
+        "T8"
+      ],
+      "text": "Reviewed claude/T8-find-and-fix-the-audio-cuts against main. Found one correctness issue: recording check exposes playback only for the first 8 of up to 200 stored loss spots, contrary to the per-spot review requirement. Focused T8 capture/UI tests passed (4 passed); broader tests were attempted but the environment denied access to the global pytest temp directory."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "User",
+      "tasks": [
+        "T8"
+      ],
+      "text": "T8: handed back to Claude to fix Codex findings (round 2)"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T8"
+      ],
+      "text": "T8 round 2: all lost-sound spots playable in review"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Codex",
+      "tasks": [
+        "T8"
+      ],
+      "text": "Reviewed claude/T8-find-and-fix-the-audio-cuts against main. Found no correctness bugs. Checked loss positions remain tied to callback order despite queue delay, totals stay separate from capped/merged playable spots, capture.json wiring, import behavior, clipping messaging, and all-spots review playback. Targeted T8 tests passed (5); broader capture/UI run was attempted but global pytest temp access was denied by the environment."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Codex",
+      "tasks": [
+        "T8"
+      ],
+      "text": "T8: changes requested by Codex's review (round 3), back to Claude: 1) core/capture.py:_enqueue only appends one loss mark when source.overflows jumps by multiple buffers between callbacks, while capture_report() counts every ov"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "User",
+      "tasks": [
+        "T8"
+      ],
+      "text": "T8: handed back to Claude to fix Codex findings (round 3)"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T8"
+      ],
+      "text": "T8 round 3: one loss mark per overflow buffer in capture; test added; 19 passed"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Codex",
+      "tasks": [
+        "T8"
+      ],
+      "text": "Reviewed claude/T8-find-and-fix-the-audio-cuts against main. Found no correctness bugs. Checked overflow and dropped-block accounting, accurate callback-order loss timestamps under queue delay, one mark per multi-overflow jump, separate total versus capped/merged playable spots, capture.json/UI wiring, and playback for all retained spots. Targeted T8 capture/UI tests passed (3); broader capture/UI run had 18 passed and 1 environment-only FFmpeg-missing failure in the DeepFilterNet coverage test."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Codex",
+      "tasks": [
+        "T8"
+      ],
+      "text": "Reviewed claude/T8-find-and-fix-the-audio-cuts against main. Found no correctness bugs. Checked overflow and dropped-block accounting, accurate callback-order loss timestamps under queue delay, one mark per multi-overflow jump, separate total versus capped/merged playable spots, capture.json/UI wiring, and playback for all retained spots. Targeted T8 tests passed (2); broader capture/UI run had 18 passed and 1 environment-only FFmpeg-missing failure in the DeepFilterNet coverage test."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T19",
+        "T20",
+        "T21",
+        "T22",
+        "T23"
+      ],
+      "text": "Planned install, update and diagnostics (M6): always-on logging and a debug bundle first (P0), then Windows installer, GitHub release pipeline and in-app updater. Decisions D05 (where builds live) and D06 (how logs and audio reach us) opened."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "User",
+      "tasks": [
+        "T20",
+        "T21",
+        "T22",
+        "T23"
+      ],
+      "text": "Decided D05 (separate public releases repo, source goes private) and D06 (debug bundle exported by Sam, carried on a flash drive; audio opt-in)."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T19"
+      ],
+      "text": "T19 always-on logging implemented and verified"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Codex",
+      "tasks": [
+        "T3"
+      ],
+      "text": "T3 complete. Added induction-phase marker shaping with a 5 s default replacement before 12 minutes, retaining 10 s normal markers; real raw take produced 11 short and 80 normal markers. Added regression test. pytest tests -k auto_edit: 6 passed, 1 skipped (raw fixture absent in worktree). Commit 9c1e0a6."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T3"
+      ],
+      "text": "T3: changes requested by Claude's review (round 1), back to Codex: 1) core/auto_edit.py:97 has_induction_phase uses the first marker in the whole take (>=180s); real takes with early markers (<180s) get no shorter induction pau"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T3"
+      ],
+      "text": "Reviewed T3 diff: changes requested (induction gate heuristic, unvalidated defaults, test gaps)"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "User",
+      "tasks": [
+        "T3"
+      ],
+      "text": "T3: handed back to Codex to fix Claude findings (round 1)"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T20"
+      ],
+      "text": "T20 debug bundle export implemented and tested"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T3"
+      ],
+      "text": "T3: changes requested by Claude's review (round 2), back to Codex: 1) core/session.py prepare(): when auto is None it re-reads render.toml via load_render_config() instead of taking the app's RenderConfig from the caller (ui/wo"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "User",
+      "tasks": [
+        "T3"
+      ],
+      "text": "T3: handed back to Codex to fix Claude findings (round 2)"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Codex",
+      "tasks": [
+        "T3"
+      ],
+      "text": "T3 review fixes complete. Threaded caller RenderConfig through UI prepare path, made induction shaping marker-time based, added 0=off and validation, replaced cursor scan, and added regression coverage including real-take 11-marker assertion. Targeted verify: 13 passed, 1 skipped (raw WAV absent). Commit 68900b6."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T4"
+      ],
+      "text": "T4: flub-cut proposals with accept/undo in review"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T3"
+      ],
+      "text": "T3: changes requested by Claude's review (round 3), back to Codex: 1) core/auto_edit.py shape_pauses: induction_min_start_s only gates on marker start >= 180 s, so it does NOT keep short/synthetic takes on the normal 10 s pause"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "User",
+      "tasks": [
+        "T3"
+      ],
+      "text": "T3: handed back to Codex to fix Claude findings (round 3)"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Codex",
+      "tasks": [
+        "T4"
+      ],
+      "text": "T4 review clean. Checked flub detection and proposal semantics, plane overlap precedence, EDL persistence/render behavior, and UI review actions. Relevant assertions passed; remaining test issues were environment-only: missing FFmpeg and denied shared pytest temp directory."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Codex",
+      "tasks": [
+        "T3"
+      ],
+      "text": "Completed T3 review round 3 fixes; clarified short-take guard and added shared-default regression coverage. Commit 09ff7d0. Auto-edit verify passed: 14 passed, 1 skipped."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T10"
+      ],
+      "text": "T10 takes library built, tests green, in Review"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Codex",
+      "tasks": [
+        "T3"
+      ],
+      "text": "T3 complete: shorter induction marker pause shaping, RenderConfig validation/wiring, and focused regression tests verified."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T3"
+      ],
+      "text": "Reviewed T3 diff vs main: clean, minor non-blocking notes recorded"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T3"
+      ],
+      "text": "T3 review: clean, no blocking findings; minor heuristic notes recorded"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T3"
+      ],
+      "text": "Merged T3 into main after resolving auto_edit.py conflict with T4"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T9"
+      ],
+      "text": "T9: changes requested by Claude's review (round 1), back to Codex: 1) true_peak oversamples the whole take 4x in one resample_poly (about 1.7 GB for 37 min), run in PrepareWorker on every take: chunk it. 2) distortion metric co"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T9"
+      ],
+      "text": "Reviewed T9 audio quality checks; requested changes (memory/perf of true peak, distortion metric false positives, misleading warning text, GUI-thread analyze, worker robustness, test gaps)"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "User",
+      "tasks": [
+        "T9"
+      ],
+      "text": "T9: handed back to Codex to fix Claude findings (round 1)"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Codex",
+      "tasks": [
+        "T9"
+      ],
+      "text": "Fixed T9 review findings and verified the quality/UI checks; commit cb84b22."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T9"
+      ],
+      "text": "T9: changes requested by Claude's review (round 2), back to Codex: 1) ui/review.py:66 _show_quality(quality) runs in __init__ before dropout_row/dropout_strip exist: AttributeError when a precomputed report has dropouts, so the"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "User",
+      "tasks": [
+        "T9"
+      ],
+      "text": "T9: handed back to Codex to fix Claude findings (round 2)"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T12"
+      ],
+      "text": "T12 waveform editor done and in Review: Audacity-style hand edits with undo/redo, automatic tools on part or all of the take, Audacity round-trip, all stored in edits.json; verified by pytest (260 passed) and a scripted session on Sam's real take (raw untouched, render OK)."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Codex",
+      "tasks": [
+        "T9"
+      ],
+      "text": "T9 round-2 review fixes committed as c744115; quality/UI scoped tests and static checks pass; main merged before handoff."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T9"
+      ],
+      "text": "T9: changes requested by Claude's review (round 3), back to Codex: 1) ui/review.py done()/closeEvent call worker.wait() on the GUI thread: closing or accepting the review dialog while the raw-vs-clean check (reads raw.flac, ana"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T12"
+      ],
+      "text": "T12 editor re-laid out like Audacity (her colours) after Sam's feedback; back in Review, 262 tests green."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T12"
+      ],
+      "text": "T12 merged to main (Sam approved the Audacity-style editor); marked Done."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "User",
+      "tasks": [
+        "T9"
+      ],
+      "text": "T9: handed back to Codex to fix Claude findings (round 3)"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Codex",
+      "tasks": [
+        "T9"
+      ],
+      "text": "Fixed T9 round-3 findings and verified quality/UI tests; Git commit and roadmap render were blocked by managed-environment permissions."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T9"
+      ],
+      "text": "T9: changes requested by Claude's review (round 4), back to Codex: 1) core/audio_quality.py analyze(): with warn_true_peak=False (the only mode the app uses: ui/workers.py PrepareWorker and AudioQualityWorker) tp is just the sa"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T9"
+      ],
+      "text": "Reviewed T9 diff vs main; requested changes (7 items: true-peak mislabel, blocking wait on close, distortion false positives, silent None, dropout count cap, flat-top heuristic, unfinished merge)"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "User",
+      "tasks": [
+        "T9"
+      ],
+      "text": "T9: handed back to Codex to fix Claude findings (round 4)"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T13"
+      ],
+      "text": "T13: Edit button beside Finish and render"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Codex",
+      "tasks": [
+        "T9"
+      ],
+      "text": "Review handoff: fixed round-4 true-peak, non-blocking worker, envelope distortion, unavailable-check, uncapped dropout-count, and full-scale flat-top findings. Verified quality (8 passed), review/takes UI (19 passed with workspace basetemp), compileall, and diff check. Full suite: 207 passed/9 skipped; 65 setup errors from sandbox TEMP permission. Shared worktree Git index remains unwritable, so merge/add/commit could not be recorded."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T9"
+      ],
+      "text": "T9: changes requested by Claude's review (round 5), back to Codex: 1) core/audio_quality.py analyze(): the true-peak > -1 dBFS warning is applied to the denoised clean take, but mastering later re-gains to -21 LUFS and limits, "
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T9"
+      ],
+      "text": "T9 review: changes requested (true-peak warning on pre-master audio, memory/time cost, clipping detection narrowed, Audacity-source mismatch, unresolved merge state)"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Codex",
+      "tasks": [
+        "T13"
+      ],
+      "text": "Review clean: T13 diff is scoped and the new Edit-then-Finish regression passes; no correctness issues found. Full UI run was initially blocked by inaccessible shared pytest temp, then targeted tests passed with a writable workspace temp."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Codex",
+      "tasks": [
+        "T13"
+      ],
+      "text": "Review clean: T13 scoped diff checked; targeted Edit then Finish tests pass; no correctness issues found; manual GUI unavailable."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "User",
+      "tasks": [
+        "T9"
+      ],
+      "text": "T9: handed back to Codex to fix Claude findings (round 5)"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Codex",
+      "tasks": [
+        "T13"
+      ],
+      "text": "Review clean: T13 UI flow and regression test checked against main; targeted UI tests passed with writable basetemp, manual GUI unavailable."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Codex",
+      "tasks": [
+        "T13"
+      ],
+      "text": "Review clean: T13 UI flow and regression test checked against main; targeted UI tests passed with writable basetemp, manual GUI unavailable."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Codex",
+      "tasks": [
+        "T9"
+      ],
+      "text": "T9 round-5 review fixes completed and verified; handoff blocked only by managed worktree index.lock permission and missing FFmpeg for full media tests."
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T9"
+      ],
+      "text": "T9: changes requested by Claude's review (round 6), back to Codex: 1) ui/review.py _detach_quality_worker: setParent(None) then dropping the only Python reference to a running QThread can crash (QThread destroyed while running)"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Claude",
+      "tasks": [
+        "T9"
+      ],
+      "text": "Reviewed T9 audio quality checks; requested changes (worker GC crash, flat-top inconsistency, false unavailable banner, swallowed errors)"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "User",
+      "tasks": [
+        "T9"
+      ],
+      "text": "T9: handed back to Codex to fix Claude findings (round 6)"
+    },
+    {
+      "date": "2026-11-10",
+      "agent": "Codex",
+      "tasks": [
+        "T9"
+      ],
+      "text": "Fixed round-6 T9 review findings; quality verification is green (11 passed). Commit/main merge blocked by existing worktree index.lock permission denial."
     }
   ],
   "tasks": [
@@ -214,7 +925,7 @@
       "priority": "P1",
       "size": "M",
       "owner": "Codex",
-      "status": "To do",
+      "status": "Done",
       "depends": [],
       "zone": "Z-CORE",
       "files": "core/auto_edit.py, tests/",
@@ -222,13 +933,18 @@
       "scope": "Detect and shape the shorter induction-phase marker pauses in core/auto_edit.py, keeping the existing behaviour for normal markers.",
       "acceptance": "On Sam's real raw take, induction-phase markers are replaced with the shorter pause lengths; existing auto-edit tests still pass.",
       "verify": "pytest tests -k auto_edit",
-      "branch": "",
-      "notes": "",
+      "branch": "codex/T3-auto-edit-handle-shorter",
+      "notes": "Merged to main (c45481c). Resolved conflict in core/auto_edit.py with T4 flub fields; 238 tests passed.",
       "legacy": "",
       "findings": [],
       "decisions": [],
       "resolves": [],
-      "tier": "Standard"
+      "tier": "Standard",
+      "handback": {
+        "from": "Claude",
+        "to": "Codex",
+        "round": 3
+      }
     },
     {
       "id": "T4",
@@ -238,7 +954,7 @@
       "priority": "P1",
       "size": "L",
       "owner": "Claude",
-      "status": "To do",
+      "status": "Done",
       "depends": [],
       "zone": "Z-UI",
       "files": "ui/, core/edit_list.py, core/auto_edit.py",
@@ -246,8 +962,8 @@
       "scope": "Show proposed cuts in the review screen with preview, accept and undo, feeding the edit list before render.",
       "acceptance": "Each proposed cut can be previewed, accepted or undone, and the render honours the result.",
       "verify": "pytest tests/test_ui.py; manual review pass on a real take.",
-      "branch": "",
-      "notes": "",
+      "branch": "claude/T4-review-ui-flub-cut-proposals-sam",
+      "notes": "Review clean: inspected auto_edit.find_flubs proposal boundaries, marker exclusion, lookahead/gap/similarity handling, plane-cut precedence in session.prepare, Cut proposed/accept/undo persistence and active_cuts/render behavior, ReviewDialog preview/accept/undo/summary wiring, and JSON compatibility. Focused T4 behavior passed within the relevant test run; broader run had 26 passed, 1 pre-existing FFmpeg-missing failure, and 8 pre-existing pytest temp-directory permission errors.",
       "legacy": "",
       "findings": [],
       "decisions": [],
@@ -310,7 +1026,7 @@
       "priority": "P0",
       "size": "L",
       "owner": "Claude",
-      "status": "To do",
+      "status": "Done",
       "depends": [],
       "zone": "Z-CORE",
       "files": "core/capture.py, core/denoise.py, core/master.py, core/plane_guard/splicer.py",
@@ -318,8 +1034,8 @@
       "scope": "Reproduce with a real mic take. Bisect the chain stage by stage (raw capture, denoise, auto-edit/splice, master gain and limiter, AAC encode) by listening to and measuring each stage's output (clipping, peak, THD, spectrum). Candidates to check, unconfirmed: input gain or clipping at capture, denoise artefacts, limiter or gain stage, crossfades at cuts, sample-rate mismatch. Fix the cause; do not mask it.",
       "acceptance": "A real take is clean at every stage and in the final MP4, confirmed by ear. The stage that introduced the distortion is named in the notes with before/after measurements.",
       "verify": "Per-stage measurements on a real take plus a listening check; tests added by T9.",
-      "branch": "",
-      "notes": "Hypotheses only. Start from the raw FLAC: if raw is clean, move downstream one stage at a time.",
+      "branch": "claude/T7-find-and-fix-the-distorted-audio",
+      "notes": "Reviewed claude/T7-find-and-fix-the-distorted-audio against main at c08936a. No correctness findings in denoise padding/context/scaling, capture clipping/overflow accounting, diagnostics, or UI warning changes. git diff --check clean. Review-only task; no code changes.",
       "legacy": "",
       "findings": [],
       "decisions": [],
@@ -334,7 +1050,7 @@
       "priority": "P0",
       "size": "L",
       "owner": "Claude",
-      "status": "To do",
+      "status": "Done",
       "depends": [],
       "zone": "Z-CORE",
       "files": "core/capture.py, core/auto_edit.py, core/plane_guard/, core/mp4_stitch.py",
@@ -342,13 +1058,18 @@
       "scope": "Work out where the cuts come from: capture queue drops (the capture counter), plane-guard cut regions, auto-edit pause shaping, or seams in the stitched output. Compare the raw FLAC to the final output on the same take and locate each gap. Fix the cause. Surface any dropped-frame count in the UI so a bad take is obvious before FINISH.",
       "acceptance": "No unintended gaps in a real take's output. Dropped capture frames are counted and shown. Intentional cuts (plane cuts, pause shaping) are reviewable.",
       "verify": "Gap detection script over raw vs final on a real take; tests added by T9.",
-      "branch": "",
-      "notes": "Check whether the cuts are plane-guard false alarms first; the guard cuts audio on its own judgement.",
+      "branch": "claude/T8-find-and-fix-the-audio-cuts",
+      "notes": "Review clean: inspected core/capture.py loss accounting and timestamp resolution, capture.json totals versus capped/merged lost_at_s spots, UI wiring, and ReviewDialog playback for every retained spot including the 200-spot cap. Targeted T8 capture/UI tests passed (2); broader capture/UI run had 18 passed and 1 environment-only failure: DeepFilterNet coverage requires FFmpeg, which was unavailable.",
       "legacy": "",
       "findings": [],
       "decisions": [],
       "resolves": [],
-      "tier": "Standard"
+      "tier": "Standard",
+      "handback": {
+        "from": "Codex",
+        "to": "Claude",
+        "round": 3
+      }
     },
     {
       "id": "T9",
@@ -358,21 +1079,29 @@
       "priority": "P0",
       "size": "M",
       "owner": "Codex",
-      "status": "To do",
-      "depends": ["T7", "T8"],
+      "status": "Done",
+      "depends": [
+        "T7",
+        "T8"
+      ],
       "zone": "Z-CORE",
       "files": "tests/, core/",
       "why": "The suite passed (171 tests) while real takes sounded distorted and had cuts. The tests did not cover real-signal quality.",
       "scope": "Add checks that run on a recorded or fixture speech take through the whole chain: clipped-sample count, peak and true-peak headroom, a distortion measure, and gap/dropout detection against the source. Fail the test and show a warning in the app on a bad take.",
       "acceptance": "Tests fail on a deliberately clipped or gapped input and pass on a clean one. A bad take shows a visible warning before FINISH.",
       "verify": "pytest tests -k quality",
-      "branch": "",
-      "notes": "Do not use synthetic voices with the neural denoiser (it removes them); use a real speech clip.",
+      "branch": "codex/T9-automated-audio-quality-checks",
+      "notes": "Round-6 fixes: retain detached running quality QThreads until finished; use absolute full-scale clipping semantics with conservative analogue flat-top detection; suppress false Audacity unavailable banner; log worker exceptions; distinguish imported vs live advice when capture.json is missing; derive active frames from sample rate and remove redundant active pass; add quality worker and 3-arg prepare signal tests. Verified compileall, git diff --check, pytest tests -k quality: 11 passed. Main merge and commit remain blocked by Permission denied creating C:/Users/chadj/pika_meditate/.git/worktrees/hush-studio-codex/index.lock.",
       "legacy": "",
       "findings": [],
       "decisions": [],
       "resolves": [],
-      "tier": "Standard"
+      "tier": "Standard",
+      "handback": {
+        "from": "Claude",
+        "to": "Codex",
+        "round": 6
+      }
     },
     {
       "id": "T10",
@@ -382,7 +1111,7 @@
       "priority": "P1",
       "size": "L",
       "owner": "Claude",
-      "status": "To do",
+      "status": "Done",
       "depends": [],
       "zone": "Z-UI",
       "files": "ui/, core/ (new takes module), main.py",
@@ -390,11 +1119,13 @@
       "scope": "Every recording is saved as a take (raw audio, edit list, notes, metadata). A Takes screen lists them with name, date, length, status (raw, edited, rendered, uploaded); rename, delete, duplicate, search, Show in Explorer, and reopen into the editor or render. Layout per decision D04.",
       "acceptance": "Record, close the app, reopen it: the take is listed and can be opened, renamed, duplicated and deleted. Show in Explorer opens the right folder.",
       "verify": "pytest tests for the takes module; manual run through the Takes screen.",
-      "branch": "",
-      "notes": "",
+      "branch": "claude/T10-takes-library-save-takes-and",
+      "notes": "core/takes.py (TakeLibrary: list/search/rename/duplicate/delete/export/import .hushtake, status raw/edited/rendered/uploaded, Show in Explorer) + ui/takes.py Takes screen + header Takes button; recordings/imports create take.json via library; sessions/ renamed to Takes/ once. Verified: tests/test_takes.py (12) + UI test, full suite 236 passed. Manual GUI run-through not done by me (headless); Sam should click through Takes screen.",
       "legacy": "",
       "findings": [],
-      "decisions": ["D04"],
+      "decisions": [
+        "D04"
+      ],
       "resolves": [],
       "tier": "Standard"
     },
@@ -407,7 +1138,9 @@
       "size": "M",
       "owner": "Codex",
       "status": "To do",
-      "depends": ["T10"],
+      "depends": [
+        "T10"
+      ],
       "zone": "Z-CORE",
       "files": "core/ (takes module), ui/",
       "why": "Sam needs to bring in recordings from elsewhere and move takes between machines or back them up.",
@@ -418,7 +1151,9 @@
       "notes": "",
       "legacy": "",
       "findings": [],
-      "decisions": ["D04"],
+      "decisions": [
+        "D04"
+      ],
       "resolves": [],
       "tier": "Standard"
     },
@@ -430,19 +1165,23 @@
       "priority": "P1",
       "size": "XL",
       "owner": "Claude",
-      "status": "To do",
-      "depends": ["T10"],
+      "status": "Done",
+      "depends": [
+        "T10"
+      ],
       "zone": "Z-UI",
       "files": "ui/ (new editor), core/edit_list.py, core/auto_edit.py",
       "why": "Sam wants to edit her take by hand, like Audacity, and still use the automated features when she wants.",
       "scope": "Waveform view with zoom and scroll, playback from any point, selection, cut, delete, insert or set silence, copy and paste, fade, undo and redo, and markers. Buttons: Auto-edit pauses, Remove plane noise, Normalise. Every change is stored in the take's edit list (non-destructive, raw is never touched). Must stay fast on a 30-40 min take.",
       "acceptance": "Sam can open a take, make manual cuts and silences, undo them, run the automated features on all or part of the take, and render the result. Raw audio is unchanged.",
       "verify": "pytest for the edit-list operations; manual editing session on a real take.",
-      "branch": "",
-      "notes": "Subsumes the cut review in T4: flub-cut proposals appear as editable regions here.",
+      "branch": "claude/T12-in-app-waveform-editor-audacity",
+      "notes": "Merged to main at Sam's request after she tried and approved the Audacity-style editor. Branch had main (incl. T3) merged in first; 271 tests green; editor's Auto-edit Pauses uses the render config's pause shaping. Still unverified by tests: playback through a real sound device (Sam used it hands-on).",
       "legacy": "",
       "findings": [],
-      "decisions": ["D01"],
+      "decisions": [
+        "D01"
+      ],
       "resolves": [],
       "tier": "Deep"
     },
@@ -454,16 +1193,18 @@
       "priority": "P1",
       "size": "S",
       "owner": "Claude",
-      "status": "To do",
-      "depends": ["T12"],
+      "status": "Done",
+      "depends": [
+        "T12"
+      ],
       "zone": "Z-UI",
       "files": "ui/main_window.py",
       "why": "After recording stops, Sam should be able to press Edit rather than going straight to Finish and render.",
       "scope": "When a take is finished, show Edit next to Finish and render; Edit opens the take in the editor, and Finish from there renders it.",
       "acceptance": "Stop recording, press Edit, make a change, press Finish and render: the output includes the change.",
       "verify": "tests/test_ui.py plus a manual run.",
-      "branch": "",
-      "notes": "",
+      "branch": "claude/T13-edit-button-after-recording",
+      "notes": "Review clean: inspected main_window.py and tests/test_ui.py diff against main; verified Edit visibility/enabling after review, editor round-trip, and Finish dispatch preserving edited EditList; targeted tests/test_ui.py passed with writable basetemp; default temp path is permission-blocked; manual GUI run unavailable.",
       "legacy": "",
       "findings": [],
       "decisions": [],
@@ -479,7 +1220,9 @@
       "size": "M",
       "owner": "Codex",
       "status": "To do",
-      "depends": ["T10"],
+      "depends": [
+        "T10"
+      ],
       "zone": "Z-CORE",
       "files": "core/ (new audacity module), ui/",
       "why": "Sam wants to jump into Audacity at any stage for anything the app's editor does not do.",
@@ -490,7 +1233,9 @@
       "notes": "Audacity has no command-line seek, so position is carried by a label track and the exported file, not a launch flag. Confirm at implementation time.",
       "legacy": "",
       "findings": [],
-      "decisions": ["D01"],
+      "decisions": [
+        "D01"
+      ],
       "resolves": [],
       "tier": "Standard"
     },
@@ -527,7 +1272,9 @@
       "size": "M",
       "owner": "Codex",
       "status": "To do",
-      "depends": ["T1"],
+      "depends": [
+        "T1"
+      ],
       "zone": "Z-CORE",
       "files": "core/youtube_publisher.py, ui/",
       "why": "Each upload needs a custom thumbnail; today the app has none.",
@@ -550,8 +1297,10 @@
       "priority": "P2",
       "size": "M",
       "owner": "Claude",
-      "status": "To do",
-      "depends": ["T10"],
+      "status": "Blocked",
+      "depends": [
+        "T10"
+      ],
       "zone": "Z-CORE",
       "files": "core/ (import), ui/",
       "why": "Sam records in Riverside and edits it, so getting Riverside takes into the app should be one step.",
@@ -559,10 +1308,12 @@
       "acceptance": "A new Riverside export appears as a take with one click or automatically, ready to edit.",
       "verify": "Import a real Riverside export; pytest for the import conversion.",
       "branch": "",
-      "notes": "Blocked on D02 for anything beyond folder import.",
+      "notes": "Deferred by Sam (D02): leave Riverside integration for a future update.",
       "legacy": "",
       "findings": [],
-      "decisions": ["D02"],
+      "decisions": [
+        "D02"
+      ],
       "resolves": [],
       "tier": "Standard"
     },
@@ -575,7 +1326,9 @@
       "size": "M",
       "owner": "Claude",
       "status": "To do",
-      "depends": ["T16"],
+      "depends": [
+        "T16"
+      ],
       "zone": "Z-UI",
       "files": "ui/, core/",
       "why": "Sam makes thumbnails in Canva. The app should shorten the trip from take to finished thumbnail.",
@@ -586,7 +1339,141 @@
       "notes": "Canva Connect API needs OAuth and app approval; do not start it until D03 is decided.",
       "legacy": "",
       "findings": [],
-      "decisions": ["D03"],
+      "decisions": [
+        "D03"
+      ],
+      "resolves": [],
+      "tier": "Standard"
+    },
+    {
+      "id": "T19",
+      "milestone": "M6",
+      "workstream": "Diagnostics",
+      "title": "Always-on logging: rotating log files, crash handler, system info",
+      "priority": "P0",
+      "size": "M",
+      "owner": "Claude",
+      "status": "Done",
+      "depends": [],
+      "zone": "Z-CORE",
+      "files": "main.py, core/app_info.py, core/ (new logging setup), core/capture.py, core/renderer.py",
+      "why": "To learn from takes recorded on Sam's PC we need to see what the app did. Today only capture.json exists per take.",
+      "scope": "Set up Python logging once at startup: a rotating log file in the user's app-data folder (app, capture, denoise, render, upload), each line timestamped. Log app version, Windows version, Python/Qt/ffmpeg versions, audio devices and the chosen host API at start. Install a global exception hook that writes the traceback and shows a friendly message. Per-take: keep capture.json and stage diagnostics next to the take. Never log tokens, OAuth secrets or file contents.",
+      "acceptance": "After a session and an induced error, the log shows what happened with timestamps, the versions, the mic in use, and the traceback. No secrets appear in it.",
+      "verify": "pytest for the log setup and secret redaction; trigger a crash in a test build and read the log.",
+      "branch": "claude/T19-always-on-logging-rotating-log",
+      "notes": "core/log_setup.py: rotating log in %LOCALAPPDATA%\\HushStudio\\logs, redaction filter, startup versions/audio devices, global+thread excepthook with friendly dialog; log calls in capture/denoise/render/upload; wired in main.py. Verified: tests/test_log_setup.py (rotation, redaction, versions, induced crash in subprocess reads traceback from log); full pytest 216 passed.",
+      "legacy": "",
+      "findings": [],
+      "decisions": [],
+      "resolves": [],
+      "tier": "Standard"
+    },
+    {
+      "id": "T20",
+      "milestone": "M6",
+      "workstream": "Diagnostics",
+      "title": "Debug bundle: export logs, measurements and (opt-in) audio clips",
+      "priority": "P0",
+      "size": "L",
+      "owner": "Claude",
+      "status": "Done",
+      "depends": [
+        "T19"
+      ],
+      "zone": "Z-UI",
+      "files": "ui/ (new Send debug report dialog), core/diagnostics.py, core/ (new bundle module)",
+      "why": "When something sounds wrong on Sam's PC we need evidence we can open here, without asking her to dig through folders.",
+      "scope": "A Help > Send debug report button that builds one zip: recent logs, system info, settings (secrets removed), and for the selected take its capture.json plus the per-stage report from core.diagnostics (peak, LUFS, clipping, dropouts at each stage). Audio is opt-in: show a list of short clips around flagged spots (clipping, dropouts) with a play button and a tick box per clip, nothing ticked by default, plus a plain note on what is included. The zip is saved to a chosen folder and its folder opened, so she can send it. Add `python -m core.diagnostics bundle.zip` to read a received bundle the same way as a session. Saving offers removable drives (a flash drive) first, and a Copy to flash drive shortcut, because that is how the bundle will reach us.",
+      "acceptance": "Sam can produce a bundle in three clicks. With no boxes ticked it contains no audio. A bundle opened here prints the same stage report as a local session.",
+      "verify": "pytest for the bundle contents and the no-audio default; manual: make and open a bundle.",
+      "branch": "claude/T20-debug-bundle-export-logs",
+      "notes": "Help > Send debug report dialog (3 clicks: Help, Send debug report, Save). core/debug_bundle.py builds zip: logs, system, redacted settings, take capture.json + stage report; audio clips opt-in, none ticked by default; flash drives listed first + Copy to flash drive; python -m core.diagnostics bundle.zip prints same report. Verified: tests/test_debug_bundle.py (5 tests: contents, no-audio default, opt-in clip, bundle report == session report, dialog), full pytest 221 passed. Manual test with a real flash drive/real take not done.",
+      "legacy": "",
+      "findings": [],
+      "decisions": [
+        "D06"
+      ],
+      "resolves": [],
+      "tier": "Standard"
+    },
+    {
+      "id": "T21",
+      "milestone": "M6",
+      "workstream": "Distribution",
+      "title": "Windows installer: Setup.exe that bundles everything Sam needs",
+      "priority": "P1",
+      "size": "L",
+      "owner": "Claude",
+      "status": "To do",
+      "depends": [],
+      "zone": "Z-CORE",
+      "files": "build/ (PyInstaller spec, Inno Setup script), requirements.txt, core/ffmpeg_tools.py, config/",
+      "why": "Sam should not install Python, FFmpeg or dependencies; she should double-click one file.",
+      "scope": "Build the app with PyInstaller (one-folder), bundling Python, PyQt6, numpy/scipy, sounddevice, FFmpeg, deep-filter.exe, the Montserrat font, assets and config. Wrap it with Inno Setup into Hush-Studio-Setup-<version>.exe: per-user install (no admin), Start menu and desktop shortcut, uninstaller, keeps data and takes on upgrade. Settings, takes and logs live in the user's app-data folder, not the install folder. First run checks the microphone and tells her what to do if Windows blocks it. Check licences of everything bundled.",
+      "acceptance": "On a clean Windows 10/11 PC (or fresh VM) with nothing installed, Setup.exe installs, the app records, renders and uploads, and uninstalling leaves her takes.",
+      "verify": "Install on a clean VM; run the full flow; run the installer twice (upgrade) and confirm takes and settings survive.",
+      "branch": "",
+      "notes": "The installer will be unsigned, so Windows SmartScreen will warn (More info, then Run anyway). Code signing costs money; decide later. The same Setup.exe can be copied to a flash drive for an offline first install.",
+      "legacy": "",
+      "findings": [],
+      "decisions": [],
+      "resolves": [],
+      "tier": "Standard"
+    },
+    {
+      "id": "T22",
+      "milestone": "M6",
+      "workstream": "Distribution",
+      "title": "GitHub Actions: build and publish a release when a version is tagged",
+      "priority": "P1",
+      "size": "M",
+      "owner": "Claude",
+      "status": "To do",
+      "depends": [
+        "T21"
+      ],
+      "zone": "Z-DOCS",
+      "files": ".github/workflows/, core/app_info.py, CHANGELOG.md",
+      "why": "Releasing should be one step so Sam always has the latest build.",
+      "scope": "Single version number in core/app_info.py. A workflow that runs on a version tag (v0.3.0) on a Windows runner: run the tests, build the installer (T21), and publish a GitHub Release with the Setup.exe, its SHA-256 and the changelog notes. Add a short RELEASING.md: bump version, tag, push. Where it publishes follows decision D05. Per D05 the workflow publishes the Release to the separate public Hush-Studio-Releases repo (the private source repo cannot serve anonymous downloads). That needs a fine-grained GitHub token limited to the releases repo, stored as an Actions secret in the source repo.",
+      "acceptance": "Pushing a tag produces a Release with a working Setup.exe and checksum, with no manual build.",
+      "verify": "Tag a pre-release and download and run the installer.",
+      "branch": "",
+      "notes": "",
+      "legacy": "",
+      "findings": [],
+      "decisions": [
+        "D05"
+      ],
+      "resolves": [],
+      "tier": "Standard"
+    },
+    {
+      "id": "T23",
+      "milestone": "M6",
+      "workstream": "Distribution",
+      "title": "In-app updater: check GitHub for a newer version and install it",
+      "priority": "P1",
+      "size": "M",
+      "owner": "Claude",
+      "status": "To do",
+      "depends": [
+        "T22"
+      ],
+      "zone": "Z-UI",
+      "files": "ui/, core/ (new updater module)",
+      "why": "Sam should get new builds without hunting for downloads.",
+      "scope": "On start (and from a Check for updates button) ask the Releases API for the latest version without any login. If newer, show What's new and an Update now button that downloads the Setup.exe, verifies its SHA-256, runs it silently, and reopens the app. Never update while recording or rendering. Fail quietly when offline. Allow skipping a version. It reads releases from the Hush-Studio-Releases repo (D05).",
+      "acceptance": "With an older build installed and a newer release published, the app offers the update and ends up on the new version with her takes and settings intact. Offline start shows no error.",
+      "verify": "Test with a fake releases endpoint; manual upgrade from an older installer.",
+      "branch": "",
+      "notes": "",
+      "legacy": "",
+      "findings": [],
+      "decisions": [
+        "D05"
+      ],
       "resolves": [],
       "tier": "Standard"
     }
