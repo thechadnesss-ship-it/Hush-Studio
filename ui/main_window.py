@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxLay
 from core.app_info import APP_NAME, SETTINGS_ORG
 from core.asset_cache import AssetCache
 from core.config import DATA_ROOT, PROJECT_ROOT, TARGET_HOURS_OPTIONS, load_render_config
+from core.intros import IntroError, IntroLibrary
 from core.renderer import TakeTooShortError, fmt_hms, fmt_mmss, plan_render
 from core.session import Session
 from core.takes import TakeLibrary, migrate_sessions_folder
@@ -96,7 +97,8 @@ class MainWindow(QMainWindow):
         self.clean = None
         self._workers: list[QThread] = []
         self.output: Path | None = None
-        self.intro_card = Path(self.settings.value("intro_card", "")) if self.settings.value("intro_card") else default_intro_card()
+        self.intros = IntroLibrary(DATA_ROOT / "Intros")
+        self._seed_intros()
 
         root = QWidget()
         self.frame = QFrame()
@@ -336,7 +338,8 @@ class MainWindow(QMainWindow):
 
     def _show_plan(self, session_s: float):
         try:
-            head = 30.0 if self.intro_card else 0.0
+            a = self.intros.active()
+            head = a.duration_s if a and self.intro_card else 0.0
             p = plan_render(session_s, 0.0, self.target.currentData(), self.cfg.fit_policy, video_head_s=head)
             self.plan.setText(f"→ {p.summary()}")
         except TakeTooShortError:
@@ -401,15 +404,30 @@ class MainWindow(QMainWindow):
             if k >= 0:
                 self.mic.setCurrentIndex(k)
 
+    @property
+    def intro_card(self) -> Path | None:
+        return self.intros.active_path()
+
+    def _seed_intros(self):
+        """First run: bring in the old single-file setting / bundled card so nothing is lost."""
+        if self.intros.list():
+            return
+        old = self.settings.value("intro_card", "")
+        src = Path(old) if old and Path(old).exists() else default_intro_card()
+        if src:
+            try:
+                self.intros.add(src, "Original intro", make_active=True)
+            except IntroError:
+                pass
+
     def choose_intro(self):
-        f, _ = QFileDialog.getOpenFileName(self, "Intro card video", str(PROJECT_ROOT), "Video (*.mp4 *.mov *.mkv)")
-        if f:
-            self.intro_card = Path(f)
-            self.settings.setValue("intro_card", f)
-            self._update_intro_button()
+        from .intros import IntrosDialog
+        IntrosDialog(self.intros, self, str(PROJECT_ROOT)).exec()
+        self._update_intro_button()
 
     def _update_intro_button(self):
-        self.btn_intro.setText(f"Intro card: {self.intro_card.name[:24]}…" if self.intro_card else "Intro card: none")
+        a = self.intros.active()
+        self.btn_intro.setText(f"Intro: {a.name[:24]}" if a else "Intro: none")
 
     # ================================================================== recording
 
