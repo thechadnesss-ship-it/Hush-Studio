@@ -4,7 +4,7 @@ What changed in each Hush Studio release, newest first. The release workflow cop
 for the tagged version into the GitHub Release notes, so write it for Sam, in plain words.
 Format: `## [MAJOR.MINOR.PATCH] - YYYY-MM-DD` (see RELEASING.md).
 
-## [0.3.0] - 2026-11-11
+## [0.3.1] - 2026-11-11
 
 - **Import now shows your audio untouched first.** After you import a recording you see the raw
   take straight away, then choose what to do with a clear list of steps: Remove background noise,
