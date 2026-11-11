@@ -1,0 +1,153 @@
+# Release (T22): push a version tag -> tests -> installer -> GitHub Release with Setup.exe + SHA-256.
+#
+#   v0.3.0        release      (tag must equal "v" + core/app_info.py APP_VERSION)
+#   v0.3.0-rc.1   pre-release  (same build, marked pre-release; the updater ignores it)
+#
+# Per decision D05 the Release is published in the separate PUBLIC repo Hush-Studio-Releases
+# (anonymous downloads; the source repo can be private). That needs the Actions secret
+# RELEASES_TOKEN: a fine-grained token limited to that repo with "Contents: Read and write".
+# Override the target with the Actions variable RELEASES_REPO (owner/name). See RELEASING.md.
+#
+# "Run workflow" (workflow_dispatch) = dry run: tests + installer as a run artifact, nothing published.
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]*.[0-9]*.[0-9]*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      RELEASES_REPO: ${{ vars.RELEASES_REPO || format('{0}/Hush-Studio-Releases', github.repository_owner) }}
+      # Pinned helper tools (bundled into the installer). Bump version + hash together.
+      FFMPEG_VERSION: "9.0.2"
+      FFMPEG_SHA256: "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba"
+      DEEPFILTER_VERSION: "0.5.6"
+      DEEPFILTER_SHA256: "75e11fa16445f560cb6b021521ddb89e89270d13b83089705d98776f58fd7915"
+      PIKA_OFFLINE: "1"        # no live flight-feed test on CI
+      PYTHONUTF8: "1"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"     # python.org CPython: ships vcruntime140.dll, which the build copies
+
+      - name: Version, tag and changelog notes
+        id: info
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          $tagArgs = @()
+          if ($env:REF_TYPE -eq 'tag') { $tagArgs = @('--tag', $env:REF_NAME) }
+          python .github/scripts/release_info.py @tagArgs --notes "$env:RUNNER_TEMP\release-notes.md"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Fetch FFmpeg and deep-filter (pinned, hash-checked)
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          function Get-Checked($url, $out, $sha) {
+            Invoke-WebRequest -Uri $url -OutFile $out
+            $got = (Get-FileHash -Algorithm SHA256 $out).Hash.ToLower()
+            if ($got -ne $sha) { throw "SHA-256 mismatch for $url`n  expected $sha`n  got      $got" }
+          }
+          $v = $env:FFMPEG_VERSION
+          $zip = "$env:RUNNER_TEMP\ffmpeg.zip"
+          Get-Checked "https://github.com/GyanD/codexffmpeg/releases/download/$v/ffmpeg-$v-essentials_build.zip" $zip $env:FFMPEG_SHA256
+          Expand-Archive $zip -DestinationPath "$env:RUNNER_TEMP\ffmpeg"
+          $bin = "$env:RUNNER_TEMP\ffmpeg\ffmpeg-$v-essentials_build\bin"   # LICENSE sits one folder up
+          if (-not (Test-Path "$bin\ffmpeg.exe")) { throw "ffmpeg.exe not at $bin" }
+          "HUSH_FFMPEG_DIR=$bin" >> $env:GITHUB_ENV
+          $bin >> $env:GITHUB_PATH
+
+          $d = $env:DEEPFILTER_VERSION
+          New-Item -ItemType Directory -Force tools\deepfilter | Out-Null
+          Get-Checked "https://github.com/Rikorose/DeepFilterNet/releases/download/v$d/deep-filter-$d-x86_64-pc-windows-msvc.exe" tools\deepfilter\deep-filter.exe $env:DEEPFILTER_SHA256
+
+      - name: Install Python packages (build venv)
+        run: |
+          python -m venv .work\build-venv
+          .work\build-venv\Scripts\python.exe -m pip install -q -r requirements.txt -r build\requirements-build.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Tests (quick suite; the full suite runs before every merge to main)
+        run: |
+          ffmpeg -hide_banner -version | Select-Object -First 1
+          .work\build-venv\Scripts\python.exe -m pytest -q -m "not slow" -p no:cacheprovider
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Ensure Inno Setup 6
+        run: |
+          $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") |
+            Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) { choco install innosetup -y --no-progress; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }
+
+      - name: Build installer (build\build.ps1, incl. frozen self-test)
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File build\build.ps1
+
+      - name: SHA-256
+        id: files
+        run: |
+          $name = "Hush-Studio-Setup-${{ steps.info.outputs.version }}.exe"
+          $setup = "dist\$name"
+          $hash = (Get-FileHash -Algorithm SHA256 $setup).Hash.ToLower()
+          # sha256sum format, so `sha256sum -c` and Get-FileHash comparisons both work
+          [IO.File]::WriteAllText("$PWD\$setup.sha256", "$hash  $name`n")
+          "setup=$setup" >> $env:GITHUB_OUTPUT
+          "sha=$setup.sha256" >> $env:GITHUB_OUTPUT
+          "### $name`n`nSHA-256 ``$hash``" >> $env:GITHUB_STEP_SUMMARY
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Hush-Studio-Setup-${{ steps.info.outputs.version }}
+          path: |
+            ${{ steps.files.outputs.setup }}
+            ${{ steps.files.outputs.sha }}
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Publish GitHub Release (in the releases repo, D05)
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.info.outputs.version }}
+          PRERELEASE: ${{ steps.info.outputs.prerelease }}
+          SETUP: ${{ steps.files.outputs.setup }}
+          SHA: ${{ steps.files.outputs.sha }}
+        run: |
+          if (-not $env:GH_TOKEN) {
+            throw "The RELEASES_TOKEN secret is not set, so nothing was published. The installer is attached to this run as an artifact. See RELEASING.md (one-time setup), then 'Re-run failed jobs'."
+          }
+          $notes = "$env:RUNNER_TEMP\release-notes.md"
+          Add-Content $notes "`n---`nBuilt from $env:GITHUB_REPOSITORY@$env:GITHUB_SHA by GitHub Actions. Check the download: ``Get-FileHash $(Split-Path -Leaf $env:SETUP)`` must match the .sha256 file."
+          gh release view $env:TAG --repo $env:RELEASES_REPO *> $null
+          if ($LASTEXITCODE -eq 0) {
+            # Re-run of the same tag: replace the files and notes, keep the release.
+            gh release upload $env:TAG $env:SETUP $env:SHA --repo $env:RELEASES_REPO --clobber
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            gh release edit $env:TAG --repo $env:RELEASES_REPO --notes-file $notes
+          } else {
+            $flags = if ($env:PRERELEASE -eq 'true') { @('--prerelease', '--latest=false') } else { @('--latest') }
+            $title = "Hush Studio " + $env:TAG.TrimStart('v')
+            gh release create $env:TAG $env:SETUP $env:SHA --repo $env:RELEASES_REPO --title $title --notes-file $notes @flags
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "Published: https://github.com/$env:RELEASES_REPO/releases/tag/$env:TAG" >> $env:GITHUB_STEP_SUMMARY

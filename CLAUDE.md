@@ -69,6 +69,7 @@ Moved to **`Docs/measurements.md`** (2026-11-11). Read only the bullets your tas
 - Logging (T19, `core/log_setup.py`):
 - Debug bundle (T20, `core/debug_bundle.py`, `ui/debug_report.py`):
 - Installer (T21, `build/`, `core/mic_check.py`, `core/selftest.py`):
+- Releases (T22, D05, `.github/workflows/release.yml`, `RELEASING.md`):
 - Takes library (T10, D04, `core/takes.py`, `ui/takes.py`):
 - Waveform editor (T12, D01, `core/editing.py`, `ui/editor.py`):
 - Live capture (`core/capture.py`):
