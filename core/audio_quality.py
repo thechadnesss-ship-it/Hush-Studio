@@ -39,6 +39,22 @@ def _db(value: float) -> float:
     return float(20 * np.log10(max(float(value), 1e-12)))
 
 
+def _analogue_flat_tops(x: np.ndarray, min_len: int = 8) -> int:
+    """Find obvious below-full-scale analogue ceilings without normalising the input.
+
+    The absolute 0.5 threshold is deliberately conservative: it catches a hot mic's
+    flattened waveform while leaving ordinary limited or gain-normalised imports alone.
+    Digital full-scale clipping is handled separately by ``flat_top_runs``.
+    """
+    a = np.abs(x)
+    if not len(a) or float(a.max(initial=0.0)) < 0.5:
+        return 0
+    same = np.concatenate(([False], x[1:] == x[:-1])) & (a >= 0.5)
+    starts = np.flatnonzero(same & ~np.concatenate(([False], same[:-1])))
+    ends = np.flatnonzero(same & ~np.concatenate((same[1:], [False])))
+    return int(np.count_nonzero(ends - starts >= min_len - 1))
+
+
 def true_peak(x: np.ndarray, sr: int = SR, oversample: int = 4,
               chunk_samples: int = 1_000_000) -> float:
     """Return an inter-sample peak without materialising an oversampled whole take."""
@@ -61,7 +77,8 @@ def true_peak(x: np.ndarray, sr: int = SR, oversample: int = 4,
     return _db(peak)
 
 
-def _active(x: np.ndarray, frame: int = 960) -> np.ndarray:
+def _active(x: np.ndarray, sr: int = SR, frame_s: float = 0.020) -> np.ndarray:
+    frame = max(1, int(frame_s * sr))
     n = len(x) // frame
     if n == 0:
         return np.ones(len(x), dtype=bool)
@@ -81,7 +98,7 @@ def dropout_times(source: np.ndarray, processed: np.ndarray, sr: int = SR,
         return []
     src, out = np.asarray(source[:n]), np.asarray(processed[:n])
     # Use the source for context; exact zeros are the strongest evidence of a cut.
-    source_active = _active(src)
+    source_active = _active(src, sr)
     gaps = zero_gaps(out, sr)
     result = []
     for t in gaps:
@@ -109,15 +126,15 @@ def analyze(source: np.ndarray, processed: np.ndarray, sr: int = SR,
     # or normalised import as clipped.
     # A mic/input ceiling can be below digital full scale, so compare flat tops
     # with the source's own peak.  A single full-scale sample still is not a run.
-    clipped = int(flat_top_runs(source, min_len=8, relative_to_peak=True))
+    clipped = int(flat_top_runs(source, min_len=8, relative_to_peak=False))
+    clipped += _analogue_flat_tops(source)
     peak = _db(np.max(np.abs(processed), initial=0.0))
     # Always measure true peak so the UI never labels a sample peak as a true
     # peak.  warn_true_peak only controls whether headroom becomes a warning.
     tp = true_peak(processed, sr)
     n = min(len(source), len(processed))
     ref, out = source[:n], processed[:n]
-    active = _active(ref)
-    if active.any() and np.any(ref[active]):
+    if n:
         # Compare short-time energy envelopes rather than samples.  Denoisers
         # can add a small delay, change phase, and remove noise without being
         # audibly distorted; sample-by-sample residuals falsely flag those

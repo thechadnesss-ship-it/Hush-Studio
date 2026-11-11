@@ -53,6 +53,12 @@ def test_below_full_scale_flat_top_is_still_clipping():
     assert analyze(x, x).clipped_samples > 0
 
 
+def test_normalised_clean_import_is_not_called_clipping():
+    x, _ = speech_take(2.0, -24, seed=409)
+    x *= 0.5
+    assert analyze(x, x).clipped_samples == 0
+
+
 def test_realistic_denoise_noise_removal_does_not_fail():
     clean, _ = speech_take(8.0, -24, seed=405)
     noise = np.random.default_rng(405).normal(0, 10 ** (-32 / 20), len(clean)).astype(np.float32)

@@ -50,13 +50,20 @@ def _runs(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return np.flatnonzero(d == 1), np.flatnonzero(d == -1)
 
 
-def flat_top_runs(x: np.ndarray, min_len: int = 8) -> int:
-    """Runs of ≥ `min_len` identical consecutive samples at ≥ half the file's peak."""
+def flat_top_runs(x: np.ndarray, min_len: int = 8, *, relative_to_peak: bool = True) -> int:
+    """Count flat runs, optionally relative to the signal's own peak.
+
+    The relative mode preserves the stage diagnostic's ability to find clipping
+    that was later turned down.  Quality checks for an incoming take use
+    ``relative_to_peak=False`` so a normally limited file is not mistaken for
+    clipping merely because its loudest sample is below full scale.
+    """
     a = np.abs(x)
     pk = float(a.max(initial=0.0))
     if pk <= 0:
         return 0
-    same = np.concatenate(([False], x[1:] == x[:-1])) & (a >= 0.5 * pk)
+    level = 0.5 * pk if relative_to_peak else CLIP
+    same = np.concatenate(([False], x[1:] == x[:-1])) & (a >= level)
     s, e = _runs(same)
     return int(np.count_nonzero(e - s >= min_len - 1))
 
