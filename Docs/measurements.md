@@ -171,6 +171,14 @@ makes speaking hard → "Listen back (last 15 s)" while paused instead.
   longer runs for imports.
 - **Live capture (`core/capture.py`):** callback only enqueues; full queue drops + counts (a
   simulated faster-than-real-time source uses backpressure instead). USB mic verified at 48 kHz.
+  Mic profiles (T29, `core/mic_profiles.py`, `config/mics.toml`, `core/mic_select.py`): Samson Q2U (prio 1, Sam's),
+  Rode NT1 (2), Fifine (3), else Generic. Names are matched on every host API, deduped (MME's 31-char names fold in);
+  a strong match (own name: 'q2u', 'fifine', 'rode'/'nt-usb'/'nt1') beats a weak one ('samson'; 'USB PnP Sound Device'
+  = Fifine; Focusrite/Scarlett/UMC/... interface = the XLR NT1), then lowest priority wins; `override` (profile id) wins
+  over all; unknown inputs are logged once. Auto open: the detected mic's best host API (WASAPI exclusive → shared →
+  WDM-KS → DirectSound → MME) → system default; Generic = system default as before. `capture.json` gets `mic_profile`.
+  `python -m core.mic_select [--profile id]` prints inputs, the detection and the open order. Dev PC 2026-11-11 with the
+  Q2U: detected `samson_q2u`, open order WASAPI #21 excl/shared → WDM-KS #33 → DS #9 → MME #1.
 - **Mic calibration (T27, `core/calibration.py`, `ui/calibrate.py`):** Settings → "Check mic" (offered once on first run
   after the T21 mic check passes, and at REC for a mic not yet checked: "Check mic" / "Record anyway", asked once per mic
   per run). Setup checks by device name (WASAPI list + defaults): laptop array / Intel SST vs USB mic (laptop default with

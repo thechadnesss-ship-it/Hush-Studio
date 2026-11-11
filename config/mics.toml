@@ -1,0 +1,69 @@
+# Mic profiles (T29): which mic is plugged in, and how Hush should open it.
+#
+# Matching is by device name, case-insensitive, on every Windows host API (MME truncates names to
+# 31 characters, so keep patterns short). `patterns` are regular expressions that identify the mic
+# for certain. `weak_patterns` only count when no profile matched for certain: they are generic chip
+# or audio-interface names that *probably* mean this mic in this household.
+#
+# Two known mics plugged in at once: the LOWEST `priority` wins (documented order below). The UI's
+# mic picker (or detect_mic(override=...)) always overrides auto-detection.
+#   1. Samson Q2U  - Sam's channel mic
+#   2. Rode NT1    - studio condenser, the best-sounding of the three
+#   3. Fifine      - spare / laptop-test mic
+# An unknown mic is "Generic": nothing changes, Windows' default is used as before.
+#
+# expected_speech_dbfs = typical sentence peak at a normal distance, before calibration gain
+# (the mic-check in Settings measures the real value per mic; this is only a starting hint).
+
+[[mic]]
+id = "samson_q2u"
+name = "Samson Q2U"
+priority = 1
+patterns = ['q2u']
+weak_patterns = ['samson']
+type = "dynamic"
+connection = "usb"
+expected_speech_dbfs = -29.5
+best_host_api = "Windows WASAPI"
+exclusive = true
+notes = "Sam's mic. Measured 2026-11-11: on MME, DirectSound, WASAPI and WDM-KS; WASAPI takes 48 kHz shared and exclusive (44.1 kHz shared fails); room about -60 dBFS on every path. Quiet dynamic: needs about +20 dB make-up."
+
+[[mic]]
+id = "rode_nt1"
+name = "Rode NT1"
+priority = 2
+patterns = ['\br(o|ø|\?)de\b', '\bnt-?1\b', 'nt-?usb']
+# The classic NT1 is XLR-only, so it shows up as the audio interface it is plugged into.
+weak_patterns = ['scarlett', 'focusrite', 'audient', '\bevo\b', 'motu', 'steinberg', '\bur(12|22|24)', 'umc\d', 'behringer', 'presonus', 'audiobox', 'volt \d', 'universal audio', 'ssl \d', 'tascam', 'xlr']
+type = "condenser"
+connection = "usb or xlr (via interface)"
+expected_speech_dbfs = -20.0
+best_host_api = "Windows WASAPI"
+exclusive = true
+notes = "Large-diaphragm condenser: sensitive, picks up more room and planes than the Q2U. Through an interface the level depends on the interface's gain knob. NT1 5th gen / NT-USB are USB and show 'RODE'/'NT' names."
+
+[[mic]]
+id = "fifine"
+name = "Fifine"
+priority = 3
+patterns = ['fifine']
+# Most Fifine USB mics (K669, K670, ...) report a generic chip name instead of their own.
+weak_patterns = ['usb pnp (sound|audio) device']
+type = "condenser"
+connection = "usb"
+expected_speech_dbfs = -30.0
+best_host_api = "Windows WASAPI"
+exclusive = true
+notes = "Budget USB condenser. Often named 'USB PnP Sound Device'. Measured on the dev laptop's USB PnP mic: speech about -40 LUFS, room about -56 dBFS (~15 dB SNR). Fixed hardware gain on many models: use calibration gain."
+
+[[mic]]
+id = "generic"
+name = "Generic"
+priority = 99
+patterns = []
+weak_patterns = []
+type = "unknown"
+connection = "unknown"
+best_host_api = ""
+exclusive = false
+notes = "Any other mic: Windows' default input, no assumptions."
