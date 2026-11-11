@@ -42,9 +42,9 @@ jobs:
         shell: pwsh
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"     # python.org CPython: ships vcruntime140.dll, which the build copies
 
@@ -114,7 +114,7 @@ jobs:
           "sha=$setup.sha256" >> $env:GITHUB_OUTPUT
           "### $name`n`nSHA-256 ``$hash``" >> $env:GITHUB_STEP_SUMMARY
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: Hush-Studio-Setup-${{ steps.info.outputs.version }}
           path: |
