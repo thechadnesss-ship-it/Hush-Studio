@@ -465,7 +465,8 @@ class MainWindow(QMainWindow):
         else:
             # Takes → "Open in editor": the waveform editor
             self.edl, self.clean = edl, clean
-            self.open_editor()
+            self.open_editor("import" if action == "audacity_import" else
+                             "open" if action == "audacity" else None)
 
     def start_recording(self):
         from core.capture import MicSource, Recorder
@@ -622,6 +623,10 @@ class MainWindow(QMainWindow):
         r = dlg.exec()
         if r == ReviewDialog.EDIT:
             self.open_editor()
+        elif r == ReviewDialog.AUDACITY:
+            self.open_editor("open")
+        elif r == ReviewDialog.IMPORT_AUDACITY:
+            self.open_editor("import")
         elif r:
             self.polish = dlg.polish.isChecked()
             self.render()
@@ -630,13 +635,14 @@ class MainWindow(QMainWindow):
             self.message.setText("Edits saved. Import or record again, or reopen this session later.")
             edl.save(self.session.edits)
 
-    def open_editor(self):
+    def open_editor(self, audacity_action: str | None = None):
         """The waveform editor (T12). Edits are saved as she goes; Render video renders them."""
         from .editor import EditorDialog
         self._set_mode("review")
         self.companion.say("review")
         dlg = EditorDialog(self.session.dir, self.edl, self.clean, self,
-                           auto_cfg=self._cfg().auto_edit_config())     # same pause shaping as import / REC
+                           auto_cfg=self._cfg().auto_edit_config(),
+                           audacity_action=audacity_action)              # same pause shaping as import / REC
         r = dlg.exec()
         self.clean = dlg.editor.audio               # the audio the edits refer to (an Audacity version, maybe)
         self._show_plan(self.edl.output_duration())

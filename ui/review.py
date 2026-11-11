@@ -35,6 +35,8 @@ def play(x: np.ndarray) -> None:
 
 class ReviewDialog(QDialog):
     EDIT = 2                      # exec() result: open the waveform editor
+    AUDACITY = 3                  # open the current edited audio in Audacity
+    IMPORT_AUDACITY = 4           # open the editor and choose the Audacity result
 
     def __init__(self, edl: EditList, clean: np.ndarray, parent=None, capture: dict | None = None,
                  source: np.ndarray | None = None, quality: QualityReport | None = None,
@@ -131,6 +133,14 @@ class ReviewDialog(QDialog):
         hand.setToolTip("Open the waveform editor: cut, silence, paste, fades, markers, and the automatic tools")
         hand.clicked.connect(lambda: self.done(self.EDIT))
         btns.addWidget(hand)
+        aud = QPushButton("Open in Audacity")
+        aud.setToolTip("Export the current audio with cut, pause, marker and playhead labels")
+        aud.clicked.connect(lambda: self.done(self.AUDACITY))
+        btns.addWidget(aud)
+        bring = QPushButton("Import changes…")
+        bring.setToolTip("Bring an audio file exported from Audacity back as a new take version")
+        bring.clicked.connect(lambda: self.done(self.IMPORT_AUDACITY))
+        btns.addWidget(bring)
         btns.addStretch(1)
         cancel = QPushButton("Back")
         cancel.clicked.connect(self.reject)
