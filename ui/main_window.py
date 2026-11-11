@@ -33,6 +33,7 @@ from core.session import Session
 from core.takes import TakeLibrary, migrate_sessions_folder
 
 from . import theme
+from .canva_panel import CanvaPanel
 from .review import ReviewDialog
 from .widgets import Companion, RecordButton, TrafficLight, VUMeter
 from .workers import ImportWorker, PrepareWorker, RenderWorker
@@ -276,6 +277,9 @@ class MainWindow(QMainWindow):
         self.btn_yt.hide()
         out.addStretch(1)
         out.addWidget(self.out_label)
+        self.canva_panel = CanvaPanel(self.settings, self)
+        self.canva_panel.hide()
+        out.addWidget(self.canva_panel)
         out.addWidget(self.btn_open)
         out.addWidget(self.btn_upload)
         out.addWidget(self.btn_cancel_upload)
@@ -317,6 +321,8 @@ class MainWindow(QMainWindow):
             self.light.set_state("idle", "Working…" if mode == "busy" else "Review edits")
         if not rec:
             self._glow("off")
+        if hasattr(self, "canva_panel"):
+            self.canva_panel.setVisible(mode == "done" and self.output is not None and self.output.exists())
 
     def _glow(self, light: str, text: str | None = None):
         """Soft window border in the light's colour while recording; none otherwise."""
@@ -455,6 +461,7 @@ class MainWindow(QMainWindow):
             return
         self.session = s
         self.output = None
+        self.canva_panel.hide()
         self.btn_open.hide()
         self.btn_upload.hide()
         self.btn_yt.hide()
@@ -680,6 +687,7 @@ class MainWindow(QMainWindow):
     def _rendered(self, plan, out, rep, tm):
         self.progress.hide()
         self.output = Path(out)
+        self.canva_panel.set_session_dir(self.session.dir)
         self._set_mode("done")
         self.companion.say("success")
         total = sum(tm.steps.values())
