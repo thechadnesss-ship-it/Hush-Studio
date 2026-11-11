@@ -47,6 +47,18 @@ def _check(name: str, fn: Callable[[], object], results: list[dict]) -> object:
         return None
 
 
+def _brightness(ff, video: Path, at_s: float) -> float:
+    """Mean grey level (0–255) of one frame, scaled down: black ≈ 0, the intro card ≈ 12–16."""
+    import subprocess
+    r = subprocess.run([ff.ffmpeg_bin(), "-v", "error", "-ss", f"{at_s:.2f}", "-i", str(video),
+                        "-frames:v", "1", "-vf", "scale=64:36,format=gray", "-f", "rawvideo", "-"],
+                       capture_output=True, stdin=subprocess.DEVNULL, **ff._POPEN_FLAGS)
+    data = r.stdout
+    if r.returncode != 0 or not data:
+        raise AssertionError(f"no frame at {at_s:.0f} s")
+    return float(np.frombuffer(data, np.uint8).mean())
+
+
 def run_self_test(work: Path | None = None) -> dict:
     from . import ffmpeg_tools as ff
     from .config import DATA_ROOT, FROZEN, PROJECT_ROOT, load_render_config
@@ -104,6 +116,26 @@ def run_self_test(work: Path | None = None) -> dict:
         return f"{ssl.OPENSSL_VERSION}; CA bundle {Path(certifi.where()).name}, {len(ctx.get_ca_certs()) or 'n/a'} roots"
     _check("YouTube client (TLS, google-auth)", tls, results)
 
+    def imports():
+        """T24: wav / mp3 / m4a / flac through the same FFmpeg call the Import button uses."""
+        import soundfile as sf
+        from .session import load_mono_48k
+        src = work / "import.wav"
+        x = _synthetic_take(4.0)
+        sf.write(src, x, 44100, subtype="PCM_16")                         # Riverside: 44.1 kHz
+        want_s = len(x) / 44100
+        done = []
+        for ext, codec in (("wav", None), ("mp3", "libmp3lame"), ("m4a", "aac"), ("flac", "flac")):
+            p = src if ext == "wav" else work / f"import.{ext}"
+            if ext != "wav":
+                ff.run([ff.ffmpeg_bin(), "-v", "error", "-y", "-i", str(src), "-c:a", codec, str(p)])
+            y = load_mono_48k(p)
+            if abs(len(y) / SR - want_s) > 0.1 or not np.abs(y).max() > 0.01:
+                raise AssertionError(f"{ext}: {len(y) / SR:.2f} s, peak {np.abs(y).max():.3f}")
+            done.append(ext)
+        return ", ".join(done)
+    _check("import wav / mp3 / m4a / flac", imports, results)
+
     def pipeline():
         import soundfile as sf
         from .asset_cache import AssetCache
@@ -117,11 +149,18 @@ def run_self_test(work: Path | None = None) -> dict:
         clean, backend = denoise(session, raw, denoiser=SpectralGate())
         edl = prepare(session, raw, clean, render_cfg=cfg)
         assets = AssetCache(cfg, work / "cache")
-        plan, out, _, tm = finish(session, cfg, assets, intro_card=None, clean=clean, edl=edl)
+        card = PROJECT_ROOT / "assets" / "intro_card.mp4"
+        if not card.is_file():
+            raise FileNotFoundError(f"the intro card is not bundled: {card}")
+        plan, out, _, tm = finish(session, cfg, assets, intro_card=card, clean=clean, edl=edl)
         dur = ff.duration(out)
         if abs(dur - 3600) > 0.5:
             raise AssertionError(f"video is {dur:.2f} s, expected 3600 s")
-        return f"{backend}; {plan.summary()}; {dur:.2f} s video; steps {tm.steps}"
+        intro, black = _brightness(ff, out, 5.0), _brightness(ff, out, 600.0)
+        if not (intro > 3.0 and black < 1.0):                     # T24: the video opens with the card
+            raise AssertionError(f"no intro visuals: brightness {intro:.1f} at 5 s, {black:.1f} at 10 min")
+        return (f"{backend}; {plan.summary()}; {dur:.2f} s video; intro brightness {intro:.1f} → "
+                f"{black:.1f}; steps {tm.steps}")
     _check("record → render pipeline (1 h video)", pipeline, results)
 
     report = {

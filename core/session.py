@@ -64,8 +64,14 @@ class Timings:
 
 def load_mono_48k(path: Path) -> np.ndarray:
     """Any audio file → float32 mono 48 kHz (Riverside exports are 44.1 kHz)."""
+    # stdin must be redirected: the installed app has no console, and a child that inherits the
+    # invalid stdin handle fails with WinError 6 (this was "can't import wav / mp3" on Sam's laptop)
     r = subprocess.run([ff.ffmpeg_bin(), "-v", "error", "-i", str(path), "-ac", "1", "-ar", str(SR),
-                        "-f", "f32le", "-"], capture_output=True, check=True)
+                        "-f", "f32le", "-"], capture_output=True, stdin=subprocess.DEVNULL,
+                       **ff._POPEN_FLAGS)
+    if r.returncode != 0:
+        raise RuntimeError("FFmpeg could not read this audio file: "
+                           + r.stderr.decode("utf-8", "replace").strip()[-300:])
     return np.frombuffer(r.stdout, np.float32).copy()
 
 

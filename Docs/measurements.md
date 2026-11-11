@@ -101,6 +101,18 @@ makes speaking hard → "Listen back (last 15 s)" while paused instead.
   (`ms-settings:privacy-microphone`), repeated at start-up until the mic has worked once (`setup/mic_ok`).
   Licences: `build/THIRD-PARTY-NOTICES.md` (PyQt6 + gyan FFmpeg are GPL: fine to give away, not to sell closed).
   `build\verify_install.ps1` automates install → self-test → upgrade → uninstall with data-survival checks on a VM.
+- **Laptop test fixes (T24, 2026-11-11, Sam's debug bundle):** (1) Import of wav/mp3 failed in the installed app:
+  it is console-less (`console=False`), and an FFmpeg child started with `capture_output` but no stdin redirect
+  inherits the invalid stdin handle → `OSError: [WinError 6] The handle is invalid` (reproduced in
+  `tests/test_t24_laptop_fixes.py` with `SetStdHandle(-10, bogus)`). Rule: **every** subprocess gets
+  `stdin=DEVNULL` (or PIPE) + `ff._POPEN_FLAGS` (CREATE_NO_WINDOW); `ff.run` does it for all its callers.
+  `load_mono_48k` raises "FFmpeg could not read this audio file: …"; worker errors are logged with the traceback.
+  (2) No intro in the video: the installer never shipped a card, so a clean install seeded "Intro: none". Now
+  `assets/intro_card.mp4` (1920×1080, 30 fps, 30 s; git-tracked via a `.gitignore` exception) is bundled,
+  required by `check_bundle.py`, and the self-test renders with it and checks the first seconds aren't black
+  (mean grey ≈ 12.6 at 5 s vs 0.0 in the black loop). The self-test also imports wav/mp3/m4a/flac. (3) A soft beep
+  in her take: the plane-guard chime played through laptop speakers into the mic → off unless QSettings
+  `chime_on=true` (headphones only).
 - **Releases (T22, D05, `.github/workflows/release.yml`, `RELEASING.md`):** the one version is `core/app_info.py`
   `APP_VERSION` (plain `MAJOR.MINOR.PATCH`: Inno's VersionInfoVersion rejects suffixes). Push tag `v<APP_VERSION>` (release)
   or `v<APP_VERSION>-rc.N` (pre-release) → `windows-2022` runner: `.github/scripts/release_info.py` checks tag = version and

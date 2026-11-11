@@ -27,6 +27,7 @@ ops/claude_usage.json
 # Narthen Control generated files
 outputs/
 Takes/
+Intros/
 
 # local run leftovers
 ops/serve.log
@@ -36,4 +37,6 @@ ops/serve.log
 # installer build output (build/build.ps1)
 dist/
 
+# Sam's intro card ships in the installer
+!assets/intro_card.mp4
 .pytest_durations.json

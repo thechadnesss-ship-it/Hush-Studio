@@ -197,7 +197,7 @@ def deepfilter_file(src: Path, dst: Path, attenuation_limit_db: float = 100.0,
             args.append("--pf")
         args.append(str(src))
         flags = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
-        proc = subprocess.run(args, capture_output=True, text=True, **flags)
+        proc = subprocess.run(args, capture_output=True, text=True, stdin=subprocess.DEVNULL, **flags)
         if proc.returncode != 0:
             raise RuntimeError(f"deep-filter failed ({proc.returncode}): {proc.stderr[-1500:]}")
         produced = list(Path(td).glob("*.wav"))

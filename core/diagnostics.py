@@ -41,7 +41,8 @@ def _load(path: Path, max_s: float | None = None) -> np.ndarray:
     args = [ff.ffmpeg_bin(), "-v", "error", "-i", str(path), "-vn", "-ac", "1", "-ar", str(SR)]
     if max_s is not None:
         args += ["-t", f"{max_s:.3f}"]
-    r = subprocess.run(args + ["-f", "f32le", "-"], capture_output=True, check=True)
+    r = subprocess.run(args + ["-f", "f32le", "-"], capture_output=True, check=True,
+                       stdin=subprocess.DEVNULL, **ff._POPEN_FLAGS)
     return np.frombuffer(r.stdout, np.float32).copy()
 
 

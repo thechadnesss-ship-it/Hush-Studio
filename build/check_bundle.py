@@ -25,6 +25,7 @@ REQUIRED = [
     "_internal/config/youtube_template.toml",
     "_internal/assets/fonts/Montserrat.ttf",
     "_internal/assets/fonts/OFL.txt",
+    "_internal/assets/intro_card.mp4",
     "_internal/tools/ffmpeg/ffmpeg.exe",
     "_internal/tools/ffmpeg/ffprobe.exe",
     "_internal/tools/deepfilter/deep-filter.exe",

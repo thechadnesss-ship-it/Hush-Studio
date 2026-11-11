@@ -190,7 +190,8 @@ def plan_tail_copy(session: Path, tail_s: float, silence: Path,
     n_sess, fdur, priming, ts = mp4_stitch.audio_frame_info(session)
     sr = ts
     r = subprocess.run([ff.ffmpeg_bin(), "-v", "error", "-t", f"{tail_s:.3f}", "-i", str(session),
-                        "-ac", "1", "-f", "f32le", "-"], capture_output=True)
+                        "-ac", "1", "-f", "f32le", "-"], capture_output=True,
+                       stdin=subprocess.DEVNULL, **ff._POPEN_FLAGS)
     if r.returncode != 0:
         return None
     y = np.frombuffer(r.stdout, np.float32)
