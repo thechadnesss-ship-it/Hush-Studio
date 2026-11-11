@@ -101,6 +101,17 @@ makes speaking hard → "Listen back (last 15 s)" while paused instead.
   (`ms-settings:privacy-microphone`), repeated at start-up until the mic has worked once (`setup/mic_ok`).
   Licences: `build/THIRD-PARTY-NOTICES.md` (PyQt6 + gyan FFmpeg are GPL: fine to give away, not to sell closed).
   `build\verify_install.ps1` automates install → self-test → upgrade → uninstall with data-survival checks on a VM.
+- **Releases (T22, D05, `.github/workflows/release.yml`, `RELEASING.md`):** the one version is `core/app_info.py`
+  `APP_VERSION` (plain `MAJOR.MINOR.PATCH`: Inno's VersionInfoVersion rejects suffixes). Push tag `v<APP_VERSION>` (release)
+  or `v<APP_VERSION>-rc.N` (pre-release) → `windows-2022` runner: `.github/scripts/release_info.py` checks tag = version and
+  takes the `CHANGELOG.md` `## [<version>]` section as notes → FFmpeg 9.0.2 essentials (GyanD/codexffmpeg) + deep-filter
+  0.5.6 downloaded and SHA-256 checked → quick suite (`-m "not slow"`, `PIKA_OFFLINE=1`) → `build\build.ps1` (frozen
+  self-test) → `.sha256` (sha256sum format) → run artifact (14 days) → `gh release create` in the public
+  `Hush-Studio-Releases` repo with secret `RELEASES_TOKEN` (fine-grained, Contents R/W on that repo only; variable
+  `RELEASES_REPO` overrides). Re-running a tag replaces the files. Companion GIFs aren't in git → released builds show the moon.
+  Measured (run for `v0.3.0-rc.2`, 2026-11-11): tag → artifact in ≈ 4.5 min; Setup.exe 127.7 MB, checksum OK; on this PC it
+  installs silently in 32 s and `--self-test` passes every check in 54 s (1 h exact render incl.). Publishing waits on Sam
+  adding the `RELEASES_TOKEN` secret (RELEASING.md, one-time setup); without it the last step fails with that message.
 - **Takes library (T10, D04, `core/takes.py`, `ui/takes.py`):** one folder per take in `Takes/` (was `sessions/`; renamed once at
   startup, nothing deleted), each with `take.json` (name, created, notes, uploaded). Folder name stays the timestamp; rename only edits
   `name`. Status derived from files: raw → edited (edits.json) → rendered (output_*h.mp4) → uploaded (take.json). Takes screen (header
