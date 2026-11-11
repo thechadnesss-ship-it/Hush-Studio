@@ -35,3 +35,5 @@ ops/serve.log
 
 # installer build output (build/build.ps1)
 dist/
+
+.pytest_durations.json

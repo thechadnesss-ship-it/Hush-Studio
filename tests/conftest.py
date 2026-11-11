@@ -83,6 +83,17 @@ SLOW_TESTS = {
 }
 
 
+def pytest_addoption(parser):
+    from progress_plugin import pytest_addoption as add
+    add(parser)
+
+
+def pytest_configure(config):
+    if config.getoption("--ui", default=False):
+        from progress_plugin import ProgressUI
+        config.pluginmanager.register(ProgressUI(), "progress-ui")
+
+
 def pytest_collection_modifyitems(config, items):
     slow = pytest.mark.slow
     for item in items:
