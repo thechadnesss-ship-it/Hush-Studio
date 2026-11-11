@@ -56,10 +56,13 @@ class AudioSource(Protocol):
 
 
 class MicSource:
-    """sounddevice input at 48 kHz mono float32. `device` = index or name substring (None = default)."""
+    """sounddevice input at 48 kHz mono float32. `device` = index or name substring (None = auto-detect
+    a known mic, else the system default). `profile` = mic profile id/name override (T29; None = detect)."""
 
-    def __init__(self, device: int | str | None = None):
+    def __init__(self, device: int | str | None = None, profile: str | None = None):
         self.device = device
+        self.profile_override = profile
+        self.profile = None             # core.mic_profiles.MicProfile once started
         self.stream = None
         self.overflows = 0              # PortAudio input overflows: samples lost → clicks
         self.info: dict = {}
@@ -72,11 +75,13 @@ class MicSource:
                 self.overflows += 1
             on_block(indata[:, 0].copy())          # copy + enqueue only
 
-        from .mic_select import candidates
+        from .mic_select import plan
         tries: list = []
         try:
+            self.profile, cands = plan(list(sd.query_devices()), list(sd.query_hostapis()), self.device,
+                                       self.profile_override)
             tries = [(c.device, sd.WasapiSettings(exclusive=True) if c.exclusive else None, c.label)
-                     for c in candidates(list(sd.query_devices()), list(sd.query_hostapis()), self.device)]
+                     for c in cands]
         except Exception:
             log.exception("mic selection failed; using the system default")
         tries.append((self.device, None, "system default"))      # last resort: the old behaviour
@@ -98,6 +103,11 @@ class MicSource:
             d = sd.query_devices(self.stream.device)
             self.info = {"device": d["name"], "host_api": sd.query_hostapis(d["hostapi"])["name"], "mode": mode,
                          "device_default_rate": d["default_samplerate"], "stream_rate": self.stream.samplerate}
+            if mode == "system default" and not self.profile_override:
+                from .mic_profiles import profile_for_device
+                self.profile = profile_for_device(d["name"])      # what actually opened
+            if self.profile is not None:
+                self.info["mic_profile"] = self.profile.id
             log.info("input opened: %s [%s] %s Hz", self.info["device"], self.info["host_api"], self.info["stream_rate"])
         except Exception:
             self.info = {}
