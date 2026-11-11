@@ -155,5 +155,19 @@ makes speaking hard → "Listen back (last 15 s)" while paused instead.
   markers and the playhead (`for_audacity.txt`), passes both files when launching Audacity, and exposes Open in Audacity
   and Import changes from Takes, Review, and the editor. Import remains undoable and stores the returned audio as a new
   `audacity_N.wav` source, leaving the original recording untouched.
+- **Import → Steps panel (T26, `ui/steps.py`, `ui/editor.py`, `core/editing.py`):** an import runs nothing but the
+  import (`ImportWorker`): one ffmpeg pass writes raw.flac (FLAC level 0, 24-bit) and returns the samples; 33 min
+  44.1 kHz wav → **2.7 s** (was 16.5 s with soundfile's FLAC writer: 7 s of it), then the editor opens on the raw take
+  (`EditList.source = "raw.flac"`, empty list). Steps panel on the editor's right: Remove background noise, Remove
+  plane noise, Auto-edit pauses, Normalise, Studio polish, each Apply / Undo / ▶ Listen (20 s from the cursor), plus
+  **Do all** = noise → planes → auto-edit → normalise (polish stays her choice, off by default). Each step is one
+  undoable change and can be taken back on its own, out of order: noise removal swaps the audio under the edits
+  (`Editor.set_source`, raw.flac ↔ clean.wav, sample-aligned, so cuts/pauses stay put); auto-edit = pauses + flub
+  proposals (`compute_auto_edit`, identical to `session.prepare`, incl. dropping a flub that overlaps an earlier one);
+  polish is `EditList.polish` (render reads it). Do all gives exactly the old `prepare()` cuts and pauses (tested
+  sample-for-sample) plus a whole-take Normalise gain, which mastering then leaves at ≈ 0 dB. `finish(clean=None)` now
+  reads `edl.source`. Live takes keep the automatic path (prepare → Review); in the editor the same panel shows those
+  steps applied, each undoable. Not done: imports skip the Review dialog, so its source-vs-clean quality check no
+  longer runs for imports.
 - **Live capture (`core/capture.py`):** callback only enqueues; full queue drops + counts (a
   simulated faster-than-real-time source uses backpressure instead). USB mic verified at 48 kHz.

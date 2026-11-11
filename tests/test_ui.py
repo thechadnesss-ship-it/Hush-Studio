@@ -528,3 +528,93 @@ def test_edit_button_after_a_take_then_finish_renders_the_edit(app, tmp_path, mo
     w.btn_finish.click()
     assert rendered == [[(5.0, 10.0)]]
     w.close()
+
+
+def _wait_steps(app, d, timeout=180):
+    end = time.perf_counter() + timeout
+    while (d._job is not None or d._chain or d._running_step) and time.perf_counter() < end:
+        app.processEvents()
+        time.sleep(0.02)
+    assert d._job is None and not d._chain, "steps did not finish: " + d.status.text()
+
+
+def test_import_opens_the_raw_take_then_steps_apply_preview_undo_and_do_all(app, tmp_path, monkeypatch):
+    """T26: importing runs nothing but the import; the editor opens on the raw take with the Steps
+    panel; each step applies, previews and undoes on its own; Do all gives the old automatic result."""
+    import soundfile as sf
+    import core.session as session_mod
+    from ui import editor as editor_mod
+    from ui.main_window import MainWindow
+    monkeypatch.setattr(session_mod, "deepfilter_exe", lambda: None)   # synthetic voice: use the spectral gate
+    x, _ = speech_take(150.0, -24, seed=21)
+    src = tmp_path / "riverside.wav"
+    sf.write(src, (x + plane(150.0, t_peak=100.0, peak_db=-30)).astype(np.float32), SR, subtype="FLOAT")
+    w = MainWindow()
+    monkeypatch.setattr(w.library, "new_dir", lambda: tmp_path / "take")
+    opened = []
+    monkeypatch.setattr(editor_mod.EditorDialog, "exec", lambda self: opened.append(self) or 0)
+    t0 = time.perf_counter()
+    w.import_file(src)
+    while not opened and time.perf_counter() - t0 < 30:
+        app.processEvents()
+        time.sleep(0.01)
+    took = time.perf_counter() - t0
+    assert opened and took < 5.0, took
+    d = opened[0]
+    take = tmp_path / "take"
+    ed, edl = d.editor, d.editor.edl
+    assert edl is w.edl and edl.source == "raw.flac" and not edl.cuts and not edl.pauses and not edl.gains
+    assert not (take / "clean.wav").exists()                     # nothing processed
+    assert EditList.load(take / "edits.json").source == "raw.flac"
+    h_raw = _hash(take / "raw.flac")
+    rows = d.steps.rows
+    assert all(r.state.text() == "Not applied" and r.apply.isEnabled() and not r.undo.isEnabled()
+               for r in rows.values())
+    assert d.steps.btn_all.isEnabled() and d.steps.import_row.state.text() == "✓ Done"
+    d.resize(1360, 820)
+    d.show()
+    pump(app, 0.2)
+    SHOTS.mkdir(exist_ok=True)
+    d.grab().save(str(SHOTS / "ui_editor_steps_raw.png"))
+
+    # each step on its own, with a preview
+    for key in ("denoise", "planes", "pauses", "normalise", "polish"):
+        rows[key].apply.click()
+        _wait_steps(app, d)
+        assert ed.step_state()[key], (key, d.status.text())
+        assert rows[key].state.text() == "✓ Applied" and rows[key].undo.isEnabled()
+        assert len(d.preview_audio(key)) == pytest.approx(20 * SR, abs=2)
+    assert (take / "clean.wav").exists() and edl.source == "clean.wav" and edl.polish
+    assert any(c.reason == "plane" for c in edl.cuts) and any(not p.locked for p in edl.pauses)
+    n_pauses = len(edl.pauses)
+
+    # undo out of order: noise removal goes, plane cuts and pauses stay; then the planes
+    rows["denoise"].undo.click()
+    _wait_steps(app, d)
+    assert edl.source == "raw.flac" and len(edl.pauses) == n_pauses and any(c.reason == "plane" for c in edl.cuts)
+    rows["planes"].undo.click()
+    assert not any(c.reason == "plane" for c in edl.cuts) and len(edl.pauses) == n_pauses
+    d.undo()                                                       # Ctrl+Z brings the planes back
+    assert any(c.reason == "plane" for c in edl.cuts)
+    for key in ("planes", "pauses", "normalise", "polish"):
+        rows[key].undo.click()
+    assert not any(ed.step_state().values())
+
+    # Do all: today's automatic result (noise removal → planes → auto-edit → normalise; polish is her choice)
+    d.steps.btn_all.click()
+    _wait_steps(app, d)
+    st = ed.step_state()
+    assert st["denoise"] and st["planes"] and st["pauses"] and st["normalise"] and not st["polish"], st
+    assert d.steps.btn_all.text().startswith("All steps applied")
+    raw, _ = sf.read(take / "raw.flac", dtype="float32")
+    clean, _ = sf.read(take / "clean.wav", dtype="float32")
+    from core.session import prepare
+    (tmp_path / "ref_take").mkdir()
+    ref = prepare(Session(tmp_path / "ref_take"), raw, clean, render_cfg=w._cfg())    # the old automatic import
+    assert [(c.start, c.end, c.reason) for c in edl.cuts] == [(c.start, c.end, c.reason) for c in ref.cuts]
+    assert [(p.start, p.end, p.new_length) for p in edl.pauses] == [(p.start, p.end, p.new_length) for p in ref.pauses]
+    d.grab().save(str(SHOTS / "ui_editor_steps_done.png"))
+    d.reject()
+    assert EditList.load(take / "edits.json") == edl
+    assert _hash(take / "raw.flac") == h_raw                      # the recording itself never changes
+    w.close()

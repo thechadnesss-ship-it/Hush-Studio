@@ -13,7 +13,12 @@
     │ Labels      │     ◉ Marker 1                                      │ ← label track (markers)
     └─────────────┴────────────────────────────────────────────────────┘
     Audio Position [00 h 12 m 03.450 s]   Selection [Start and End ▾] [..] [..]  ← selection toolbar
-    Stopped.                                     Studio polish  Save & close  Render video
+    Stopped.                                                    Save & close  Render video
+
+On the right, the Steps panel (T26, ui/steps.py): an imported take opens raw, and Sam applies Remove
+background noise / Remove plane noise / Auto-edit pauses / Normalise / Studio polish one by one, or
+Do all; each step can be listened to and undone on its own. Noise removal swaps the audio under the
+edits (raw.flac ↔ clean.wav, sample-aligned), so it too is one undoable step.
 
 Audacity's shortcuts work (Space, P, Shift+Space, Home/End, arrows, Ctrl+X/C/V/K/T/L/B/M/Z/Y,
 Ctrl+1/2/3/E/F, Ctrl+A, Ctrl+Shift+A, Ctrl+Shift+E). Every change is an entry in the take's
@@ -37,12 +42,13 @@ from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFileDialog, QFrame,
                              QLineEdit, QMenu, QMenuBar, QMessageBox, QProgressBar, QPushButton, QScrollBar,
                              QSizePolicy, QToolBar, QToolButton, QVBoxLayout, QWidget)
 
-from core.edl import EditList
+from core.edl import DEFAULT_SOURCE, RAW_SOURCE, EditList
 from core.audacity import export_for_audacity, find_audacity
-from core.editing import Editor, compute_auto_pauses, compute_normalise, compute_plane_cuts
+from core.editing import Editor, compute_auto_edit, compute_auto_pauses, compute_normalise, compute_plane_cuts
 from core.renderer import fmt_mmss
 
 from . import theme
+from .steps import DO_ALL, StepsPanel
 
 BLOCK = 256                      # waveform peaks are kept per 256 samples (≈ 5 ms)
 RULER_H = 28                     # timeline
@@ -941,6 +947,8 @@ class EditorDialog(QDialog):
         self._speech = None                       # VAD of the current audio, reused by the detectors
         self._paused: tuple[int, int, bool] | None = None
         self._play_from = 0.0
+        self._chain: list[str] = []               # "Do all": steps still to run
+        self._running_step: str | None = None
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
@@ -1028,6 +1036,12 @@ class EditorDialog(QDialog):
         body.addWidget(leftw)
         self.view = WaveView(self.editor, self.take_name)
         body.addWidget(self.view, 1)
+        self.steps = StepsPanel()
+        self.steps.apply.connect(self.step_apply)
+        self.steps.undo.connect(self.step_undo)
+        self.steps.preview.connect(self.step_preview)
+        self.steps.do_all.connect(self.do_all)
+        body.addWidget(self.steps)
         lay.addLayout(body, 1)
         self.scroll = QScrollBar(Qt.Orientation.Horizontal)
         self.scroll.valueChanged.connect(self._scrolled)
@@ -1082,9 +1096,6 @@ class EditorDialog(QDialog):
         self.busy.setFixedWidth(120)
         self.busy.hide()
         row.addWidget(self.busy)
-        self.polish = QCheckBox("Studio polish")
-        self.polish.setToolTip("Warmth, softer “s” sounds, gentle evening-out (keeps her style)")
-        row.addWidget(self.polish)
         close = QPushButton("Save && close")
         close.clicked.connect(self.reject)
         self.btn_render = QPushButton("Render video")
@@ -1095,7 +1106,7 @@ class EditorDialog(QDialog):
         lay.addWidget(status)
 
         # keyboard belongs to the waveform: buttons never take focus (Space / Enter / arrows)
-        for wdg in self.findChildren(QToolButton) + [self.polish, close, self.btn_render, self.sel_mode]:
+        for wdg in self.findChildren(QToolButton) + [close, self.btn_render, self.sel_mode]:
             wdg.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         for b in (close, self.btn_render):
             b.setAutoDefault(False)
@@ -1332,6 +1343,7 @@ class EditorDialog(QDialog):
         self.act_linear.setChecked(not v.db_view)
         self.act_db.setChecked(v.db_view)
         self.auto_label.setText("Automatic, on the selection:" if has_sel else "Automatic, on the whole take:")
+        self._show_steps(busy)
         self.lengths.setText(f"Edited {fmt_mmss(ed.duration)} · recorded {fmt_mmss(ed.edl.duration)}"
                              + ("" if ed.on_original else " (from Audacity)"))
         self._update_selbar()
@@ -1659,11 +1671,15 @@ class EditorDialog(QDialog):
         try:
             on_done(result)
         except Exception as e:
+            self._chain.clear()
+            self._running_step = None
             self._say(f"That didn't work: {e}")
         self._view_changed()
 
     def _job_failed(self, msg: str) -> None:
         self._job = None
+        self._chain.clear()
+        self._running_step = None
         self.busy.hide()
         self.state.setText("Stopped.")
         self._say(msg.strip().splitlines()[0][:200])
@@ -1691,20 +1707,19 @@ class EditorDialog(QDialog):
                       f"{marks} pause markers → long silence. Undo with Ctrl+Z.")
         self._run("Finding pauses and her pause markers…", work, done)
 
-    def do_planes(self):
-        raw_path = self.take_dir / "raw.flac"
-        if not raw_path.exists():
-            self._say("This take has no raw recording (raw.flac), so planes can't be found again.")
-            return
-        a, b, (sa, sb) = self._range()
+    def do_planes(self, whole: bool = False, then=None):
+        raw_path = self.take_dir / RAW_SOURCE
         ed = self.editor
+        on_raw = ed.edl.source == RAW_SOURCE
+        if not on_raw and not raw_path.exists():
+            self._say("This take has no raw recording (raw.flac), so planes can't be found again.")
+            self._chain.clear()
+            return
+        a, b, (sa, sb) = (None, None, (0.0, ed.edl.duration)) if whole else self._range()
         audio, edl_copy = ed.audio, EditList.from_dict(ed.edl.to_dict())
 
         def work():
-            import soundfile as sf
-            raw, _ = sf.read(raw_path, dtype="float32", always_2d=False)
-            if raw.ndim > 1:
-                raw = raw.mean(axis=1)
+            raw = audio if on_raw else _read_mono(raw_path)
             if abs(len(raw) - len(audio)) > ed.sr // 2:
                 raise ValueError("The raw recording and the cleaned audio don't line up; can't look for planes.")
             return compute_plane_cuts(raw, audio, edl_copy, sa, sb, speech=self._speech_for(audio))
@@ -1715,21 +1730,187 @@ class EditorDialog(QDialog):
             where = "the selection" if a is not None else "the take"
             self._say(f"{n} plane / noise cut{'s' if n != 1 else ''} in {where} (▼ on the clip bar marks each "
                       f"one: click to listen or restore)." if n else f"No planes or loud noise found in {where}.")
+            if then:
+                then()
         self._run("Listening for planes and loud noise…", work, done)
 
-    def do_normalise(self):
-        a, b, _ = self._range()
+    def do_normalise(self, whole: bool = False, then=None):
+        a, b, _ = (None, None, None) if whole else self._range()
         ed = self.editor
         tl, audio = ed.tl, ed.audio
 
         def done(db):
             if abs(db) < 0.05:
                 self._say("Already at the right level.")
-                return
-            ed.apply_normalise(db, a, b)
-            self._after_edit()
-            self._say(f"Normalise ({'selection' if a is not None else 'whole take'}): {db:+.1f} dB. Undo with Ctrl+Z.")
+            else:
+                ed.apply_normalise(db, a, b)
+                self._after_edit()
+                self._say(f"Normalise ({'selection' if a is not None else 'whole take'}): {db:+.1f} dB. "
+                          "Undo with Ctrl+Z.")
+            if then:
+                then()
         self._run("Measuring loudness…", lambda: compute_normalise(tl, audio, a, b), done)
+
+    # ------------------------------------------------------------------ steps panel (T26)
+
+    def _step_why_not(self) -> dict[str, str]:
+        ed = self.editor
+        why = {}
+        if ed.edl.source not in (DEFAULT_SOURCE, RAW_SOURCE):
+            why["denoise"] = "Not available on audio brought back from Audacity."
+        elif ed.edl.source == DEFAULT_SOURCE and RAW_SOURCE not in ed.sources \
+                and not (self.take_dir / RAW_SOURCE).exists():
+            why["denoise"] = "This take has no raw recording (raw.flac) to go back to."
+        if not ed.on_original:
+            why["planes"] = "Not available on audio brought back from Audacity."
+        elif ed.edl.source != RAW_SOURCE and not (self.take_dir / RAW_SOURCE).exists():
+            why["planes"] = "This take has no raw recording (raw.flac)."
+        return why
+
+    def _show_steps(self, busy: bool) -> None:
+        ed = self.editor
+        state = ed.step_state()
+        can_preview = {"denoise": state["denoise"] or DEFAULT_SOURCE in ed.sources}
+        self.steps.show_state(state, busy, self._step_why_not(), can_preview, running=self._running_step)
+
+    def _step_done(self, key: str) -> None:
+        """A step finished (or had nothing to do): carry on with "Do all" if it is running."""
+        if self._running_step == key:
+            self._running_step = None
+        self._show_steps(self._job is not None)
+        if self._chain:
+            QTimer.singleShot(0, self._next_in_chain)
+
+    def do_all(self) -> None:
+        """Remove noise → planes → auto-edit pauses → normalise, as the import used to do it all at once."""
+        if self._job is not None:
+            return
+        state, why = self.editor.step_state(), self._step_why_not()
+        self._chain = [k for k in DO_ALL if not state[k] and not why.get(k)]
+        self._next_in_chain()
+
+    def _next_in_chain(self) -> None:
+        if self._job is not None or not self._chain:
+            return
+        self.step_apply(self._chain.pop(0), chained=True)
+
+    def step_apply(self, key: str, chained: bool = False) -> None:
+        if self._job is not None:
+            return
+        if not chained:
+            self._chain.clear()
+        ed = self.editor
+        if ed.step_state().get(key) or self._step_why_not().get(key):
+            self._step_done(key)
+            return
+        self._running_step = key
+        then = lambda: self._step_done(key)
+        if key == "denoise":
+            self._apply_denoise(then)
+        elif key == "planes":
+            self.do_planes(whole=True, then=then)
+        elif key == "pauses":
+            self._apply_auto_edit(then)
+        elif key == "normalise":
+            self.do_normalise(whole=True, then=then)
+        elif key == "polish":
+            self._edit("Studio polish on (it is added when the video is made)", lambda: ed.set_polish(True))
+            then()
+        if self._job is None and self._running_step == key:       # finished at once, or couldn't start
+            self._running_step = None
+            self._show_steps(False)
+
+    def step_undo(self, key: str) -> None:
+        """Take one step back out, whatever came after it (each is its own undoable change)."""
+        if self._job is not None:
+            return
+        self._chain.clear()
+        ed = self.editor
+        if key == "denoise":
+            self._swap_source(RAW_SOURCE, "Background noise removal taken out", lambda: None)
+            return
+        fn = {"planes": ed.remove_plane_cuts, "pauses": ed.remove_auto_edit,
+              "normalise": ed.remove_normalise, "polish": lambda: ed.set_polish(False)}[key]
+        label = {"planes": "Plane cuts taken out", "pauses": "Auto-edit taken out",
+                 "normalise": "Normalise taken out", "polish": "Studio polish off"}[key]
+        self._edit(label, fn)
+
+    def _swap_source(self, name: str, label: str, then) -> None:
+        """Switch the audio under the edits (raw ↔ clean), loading the file if it isn't in memory."""
+        ed = self.editor
+
+        def done(x):
+            ed.set_source(x, name, label)
+            self._after_edit(label=label)
+            then()
+        if name in ed.sources:
+            try:
+                done(ed.sources[name])
+            except Exception as e:
+                self._chain.clear()
+                self._say(f"{label} didn't work: {e}")
+            return
+        path = self.take_dir / name
+        self._run(f"Loading {name}…", lambda: _read_mono(path), done)
+
+    def _apply_denoise(self, then) -> None:
+        ed = self.editor
+        if DEFAULT_SOURCE in ed.sources or (self.take_dir / DEFAULT_SOURCE).exists():
+            self._swap_source(DEFAULT_SOURCE, "Background noise removed", then)       # done before: instant
+            return
+        raw, take_dir = ed.audio, self.take_dir
+
+        def work():
+            from core.session import Session, denoise
+            y, _backend = denoise(Session(take_dir), raw)        # writes clean.wav; raw.flac is only read
+            return y
+
+        def done(y):
+            ed.set_source(y, DEFAULT_SOURCE, "Background noise removed")
+            self._after_edit(label="Background noise removed")
+            then()
+        self._run("Removing background noise (about a minute on a long take)…", work, done)
+
+    def _apply_auto_edit(self, then) -> None:
+        ed = self.editor
+        audio, edl_copy, cfg = ed.audio, EditList.from_dict(ed.edl.to_dict()), self.auto_cfg
+
+        def work():
+            return compute_auto_edit(audio, edl_copy, cfg, speech=self._speech_for(audio))
+
+        def done(res):
+            pauses, flubs = res
+            n = ed.apply_auto_edit(pauses, flubs)
+            self._after_edit()
+            marks = sum(p.kind == "marker" for p in pauses)
+            self._say(f"Auto-edit pauses: {n} pauses shaped, {marks} pause markers → long silence"
+                      + (f", {len(flubs)} repeated phrase{'s' if len(flubs) != 1 else ''} suggested as cuts "
+                         "(Next proposed cut)" if flubs else "") + ". Undo it on its step, or Ctrl+Z.")
+            then()
+        self._run("Finding pauses, her pause markers and repeated phrases…", work, done)
+
+    def preview_audio(self, key: str, seconds: float = 20.0) -> np.ndarray:
+        """`seconds` from the cursor with this step: noise removal (once the cleaned audio is known)
+        and polish are heard even before they are applied; the others play the take as it is now."""
+        ed, sr = self.editor, self.editor.sr
+        t = self.view.playhead if self.view.playhead is not None else self.view.cursor_t
+        t = min(max(0.0, t), max(0.0, ed.duration - 1.0))
+        a, b = int(round(t * sr)), int(round(min(ed.duration, t + seconds) * sr))
+        audio = ed.sources.get(DEFAULT_SOURCE, ed.audio) if key == "denoise" else ed.audio
+        x = np.asarray(ed.tl.render(audio, a, b), dtype=np.float32)
+        if key == "polish":
+            from core.polish import polish
+            x = np.asarray(polish(x, sr), dtype=np.float32)
+        return np.ascontiguousarray(x)
+
+    def step_preview(self, key: str) -> None:
+        x = self.preview_audio(key)
+        what = {"denoise": "with background noise removed", "polish": "with studio polish"}.get(key, "as it is now")
+        self.stop_play()
+        if self.player.play_array(x):
+            self.state.setText(f"Playing 20 s {what}.")
+        else:
+            self._say(self.player.error)
 
     # ------------------------------------------------------------------ files: export, Audacity round trip
 
@@ -1829,6 +2010,12 @@ class EditorDialog(QDialog):
         self.stop_play()
         self.save_now()
         super().done(r)
+
+
+def _read_mono(path: Path) -> np.ndarray:
+    import soundfile as sf
+    x, _ = sf.read(path, dtype="float32", always_2d=False)
+    return x.mean(axis=1).astype(np.float32) if x.ndim > 1 else x
 
 
 def _take_name(d: Path) -> str:

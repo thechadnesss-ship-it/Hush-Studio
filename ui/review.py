@@ -127,6 +127,7 @@ class ReviewDialog(QDialog):
         lay.addWidget(self.markers, 3)
 
         self.polish = QCheckBox("Studio polish: warmth, softer “s” sounds, gentle evening-out (keeps her style)")
+        self.polish.setChecked(bool(getattr(edl, "polish", False)))     # same flag as the editor's Steps panel
         lay.addWidget(self.polish)
         btns = QHBoxLayout()
         hand = QPushButton("Edit by hand…")

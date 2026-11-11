@@ -76,10 +76,20 @@ def load_mono_48k(path: Path) -> np.ndarray:
 
 
 def import_take(src: Path, session: Session) -> np.ndarray:
+    """Any audio file → raw.flac (48 kHz mono, 24-bit) + the float samples, in ONE ffmpeg pass.
+    FFmpeg's FLAC encoder at level 0 is ~4× quicker than soundfile's (33 min: 1.7 s vs 7 s), which
+    keeps an import at a few seconds (T26: the take opens raw; processing is Sam's choice)."""
     session.dir.mkdir(parents=True, exist_ok=True)
-    x = load_mono_48k(src)
-    sf.write(session.raw, x, SR, format="FLAC", subtype="PCM_24")
-    return x
+    r = subprocess.run([ff.ffmpeg_bin(), "-v", "error", "-y", "-i", str(src),
+                        "-map", "0:a:0", "-ac", "1", "-ar", str(SR), "-c:a", "flac", "-sample_fmt", "s32",
+                        "-bits_per_raw_sample", "24", "-compression_level", "0", str(session.raw),
+                        "-map", "0:a:0", "-ac", "1", "-ar", str(SR), "-f", "f32le", "-"],
+                       capture_output=True, stdin=subprocess.DEVNULL, **ff._POPEN_FLAGS)
+    if r.returncode != 0:
+        session.raw.unlink(missing_ok=True)
+        raise RuntimeError("FFmpeg could not read this audio file: "
+                           + r.stderr.decode("utf-8", "replace").strip()[-300:])
+    return np.frombuffer(r.stdout, np.float32).copy()
 
 
 def denoise(session: Session, x: np.ndarray, denoiser: Denoiser | None = None,
@@ -123,6 +133,7 @@ def prepare(session: Session, raw: np.ndarray | None, clean: np.ndarray,
     edl = EditList(duration=dur, sample_rate=SR)
     holds = holds_from_events(ear_events, dur)
     add_plane_cuts(edl, holds, speech, onsets=[e.t for e in ear_events if e.kind == "rising"])
+    # (the editor's "Auto-edit pauses" step, core.editing.compute_auto_edit, does exactly this)
     edl.pauses, template = auto_edit(clean, SR, speech, dur, auto, cuts=edl.active_cuts(), template=marker_template)
     if auto.flub_detect:
         markers, _ = find_markers(clean, SR, speech, auto, template) if auto.marker_detect else ([], None)
@@ -139,9 +150,11 @@ def finish(session: Session, cfg: RenderConfig, assets: AssetCache, intro_card: 
     """Apply edits → master → encode once → stitch the long video. Returns timings per step."""
     tm = Timings()
     t = time.perf_counter()
-    if clean is None:
-        clean, _ = sf.read(session.clean, dtype="float32")
     edl = edl or EditList.load(session.edits)
+    if clean is None:                       # the audio the edits refer to: clean.wav, raw.flac, an Audacity version
+        clean, _ = sf.read(session.dir / edl.source, dtype="float32", always_2d=False)
+        if clean.ndim > 1:
+            clean = clean.mean(axis=1)
     edited = edl.render(clean)
     t = tm.mark("apply_edits", t)
     rep = master_to_m4a(edited, SR, session.m4a, cfg)

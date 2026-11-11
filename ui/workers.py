@@ -14,15 +14,40 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from core.asset_cache import AssetCache
 from core.audio_quality import analyze
 from core.config import RenderConfig
-from core.edl import EditList
-from core.session import Session, denoise, finish, import_take, prepare
+from core.edl import RAW_SOURCE, EditList
+from core.session import SR, Session, denoise, finish, import_take, prepare
 
 logger = logging.getLogger(__name__)
 
 
+class ImportWorker(QThread):
+    """Imported file → raw.flac (48 kHz mono) and an empty edit list on it. Nothing else runs:
+    Sam chooses the processing steps in the editor (T26)."""
+    stage = pyqtSignal(str)
+    done = pyqtSignal(object, object)             # EditList (source raw.flac), raw ndarray
+    failed = pyqtSignal(str)
+
+    def __init__(self, session: Session, src: Path, parent=None):
+        super().__init__(parent)
+        self.session, self.src = session, src
+
+    def run(self):
+        try:
+            t0 = time.perf_counter()
+            self.stage.emit("Importing the take…")
+            raw = import_take(self.src, self.session)
+            edl = EditList(duration=len(raw) / SR, sample_rate=SR, source=RAW_SOURCE)
+            edl.save(self.session.edits)
+            logger.info("imported %s: %.1fs audio in %.2fs", self.src.name, len(raw) / SR, time.perf_counter() - t0)
+            self.done.emit(edl, raw)
+        except Exception:
+            self.failed.emit(traceback.format_exc())
+
+
 class PrepareWorker(QThread):
-    """Imported file: import → noise removal → edits. Recorded take: edits only (the live ear
-    already heard the planes and noise removal ran during the take)."""
+    """Recorded take: edits only (the live ear already heard the planes and noise removal ran
+    during the take). Imported file: import → noise removal → edits, all at once; the app now
+    imports with ImportWorker instead and Sam picks the steps (T26), this path stays for scripts."""
     stage = pyqtSignal(str)
     done = pyqtSignal(object, object, object)     # EditList, clean ndarray, raw source (or None)
     failed = pyqtSignal(str)

@@ -36,6 +36,7 @@ FADES = ("none", "in", "out")
 INSERT_EDGE_S = 0.005          # tiny fades where inserted audio meets the take (no clicks)
 GAIN_RAMP_S = 0.020            # a level change eases in/out over this, never a step
 DEFAULT_SOURCE = "clean.wav"
+RAW_SOURCE = "raw.flac"           # an imported take before noise removal (T26)
 
 
 def _id() -> str:
@@ -428,6 +429,7 @@ class EditList:
     gains: list[Gain] = field(default_factory=list)
     markers: list[Marker] = field(default_factory=list)
     source: str = DEFAULT_SOURCE        # the audio file (in the take folder) these times refer to
+    polish: bool = False                # Studio polish at render (a step Sam chooses; undoable)
 
     # ------------------------------------------------------------------ queries
 
