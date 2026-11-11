@@ -2,6 +2,7 @@
 duplicate, delete, Show in Explorer, export/import (.hushtake), and reopen into review or render."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -39,7 +40,7 @@ class _TakeTable(QTableWidget):
 
 
 class TakesDialog(QDialog):
-    """`result_take` / `result_action` ("review" | "render") are set when Sam reopens a take."""
+    """`result_take` / `result_action` request review, render, or an Audacity round trip."""
 
     def __init__(self, library: TakeLibrary, parent=None, busy: bool = False):
         super().__init__(parent)
@@ -83,6 +84,8 @@ class TakesDialog(QDialog):
         row = QHBoxLayout()
         self.btns: dict[str, QPushButton] = {}
         for key, text, fn in [("review", "Open in editor", lambda: self.reopen("review")),
+                              ("audacity", "Open in Audacity", lambda: self.reopen("audacity")),
+                              ("audacity_import", "Import changes…", lambda: self.reopen("audacity_import")),
                               ("render", "Render", lambda: self.reopen("render")),
                               ("rename", "Rename", self.rename), ("dup", "Duplicate", self.duplicate),
                               ("explorer", "Show in Explorer", self.explorer), ("export", "Export…", self.export),
@@ -131,7 +134,12 @@ class TakesDialog(QDialog):
         t = self.current()
         if t is None or self._busy:
             return
-        if not (t.dir / "raw.flac").exists() or not (t.dir / "clean.wav").exists():
+        source = "clean.wav"
+        try:
+            source = str(json.loads((t.dir / "edits.json").read_text("utf-8")).get("source", source))
+        except (OSError, ValueError, TypeError):
+            pass
+        if not (t.dir / source).exists():
             QMessageBox.information(self, "Takes", "This take has no cleaned audio yet, so it can't be opened.")
             return
         self.result_take, self.result_action = t, action

@@ -38,6 +38,7 @@ from PyQt6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFileDialog, QFrame,
                              QSizePolicy, QToolBar, QToolButton, QVBoxLayout, QWidget)
 
 from core.edl import EditList
+from core.audacity import export_for_audacity, find_audacity
 from core.editing import Editor, compute_auto_pauses, compute_normalise, compute_plane_cuts
 from core.renderer import fmt_mmss
 
@@ -923,7 +924,8 @@ class WaveView(QWidget):
 class EditorDialog(QDialog):
     """Edit one take. Accept = render it. `editor.audio` is the audio the edits refer to."""
 
-    def __init__(self, take_dir: Path, edl: EditList, audio: np.ndarray, parent=None, auto_cfg=None):
+    def __init__(self, take_dir: Path, edl: EditList, audio: np.ndarray, parent=None, auto_cfg=None,
+                 audacity_action: str | None = None):
         super().__init__(parent)
         self.take_dir = Path(take_dir)
         self.take_name = _take_name(self.take_dir)
@@ -1109,6 +1111,8 @@ class EditorDialog(QDialog):
         QTimer.singleShot(0, self.view.fit)
         self.view.setFocus()
         self._after_edit(save=False)
+        if audacity_action in ("open", "import"):
+            QTimer.singleShot(0, self.open_in_audacity if audacity_action == "open" else self.bring_back)
 
     # ------------------------------------------------------------------ building
 
@@ -1749,22 +1753,32 @@ class EditorDialog(QDialog):
     def open_in_audacity(self):
         path = self.take_dir / "for_audacity.wav"
 
-        def done(p):
+        def done(paths):
+            p, labels = paths
             exe = find_audacity()
             if exe:
                 try:
-                    subprocess.Popen([exe, str(p)])
+                    # Audacity opens the WAV and the tab-separated labels as
+                    # separate tracks.  The PLAYHEAD label substitutes for a
+                    # command-line seek, which Audacity does not provide.
+                    subprocess.Popen([exe, str(p), str(labels)])
                     self._say("Opened in Audacity. When you're done there: File → Export Audio (WAV), "
-                              "then File → Bring back from Audacity.")
+                              "then use Bring back from Audacity or Import changes.")
                     return
                 except OSError:
                     pass
             QMessageBox.information(self, "Audacity", "Audacity isn't installed here (audacityteam.org).\n\n"
-                                    f"The edited take is saved as {p.name} in the take's folder; "
+                                    f"The edited take and labels are saved as {p.name} and {labels.name} in the take's folder; "
                                     "any audio editor can open it. Then use Bring back from Audacity.")
             if sys.platform == "win32":
                 subprocess.run(["explorer", "/select,", str(p)])
-        self._run("Saving the edited take for Audacity…", self._write_edited(path), done)
+
+        def work():
+            ed = self.editor
+            playhead = self.view.playhead if self.view.playhead is not None else self.view.cursor_t
+            return export_for_audacity(path, ed.render(), ed.edl, playhead)
+
+        self._run("Saving the edited take and Audacity labels…", work, done)
 
     def bring_back(self):
         f, _ = QFileDialog.getOpenFileName(self, "The file you exported from Audacity", str(self.take_dir),

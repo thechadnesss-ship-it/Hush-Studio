@@ -4,6 +4,9 @@ Output: `dist\Hush-Studio-Setup-<version>.exe`, one file Sam double-clicks. It n
 pre-installed (Python, Qt, FFmpeg, deep-filter and the VC++ runtime are inside) and works offline,
 so it can be copied to a flash drive.
 
+Releases are built by GitHub Actions when a version tag is pushed (see `RELEASING.md`); this page
+is for building one by hand on a Windows PC.
+
 ## One-time setup on the build PC (not Sam's)
 
 * python.org **Python 3.12** with the `py` launcher (it ships `vcruntime140.dll`, which the build copies).
