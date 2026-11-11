@@ -224,21 +224,34 @@ pika_meditate/
 
 ### Module C — Master Once (`core/master.py`)
 
-Runs on `clean.wav` (30 min) at FINISH, and on `intro.wav` when the cache is built. **Both must go
-through the same chain and land at the same loudness**, or the intro will jump in volume.
+Runs on `clean.wav` (the edited take) at FINISH, and on intro audio if a channel ever uses one (Sam's
+intro is a silent video card, §0.5). **Both go through the same chain and land at the same loudness**,
+or the intro would jump in volume. The chain is deliberately **light**, matching Sam's hand edits
+(§0.5: no denoise, EQ or compression; ≈ −21 LUFS, peaks ≈ −4 dBFS). Settings: `MasterConfig`
+(defaults below; `target_lufs`, `seam_fade_ms`, `polish` come from `render.toml`).
 
-1. pedalboard chain:
-   ```python
-   Pedalboard([
-       HighpassFilter(cutoff_frequency_hz=80),
-       Compressor(threshold_db=-16, ratio=2.5, attack_ms=10, release_ms=200),
-   ])
-   ```
-2. Measure integrated loudness (pyloudnorm), apply gain to **-14 LUFS**, then `Limiter(threshold_db=-1.0)`.
-   (Two-pass is cheap now: 30 min, not 8 h.)
-3. **Seam fades:** fade-in and fade-out of `seam_fade_ms` (default 1500 ms) at the start and end of the
-   take. Loop boundaries then go silence→silence, so the loop is inaudible.
-4. Encode once: `ffmpeg -i mastered.wav -c:a aac -b:a 128k -ac 1 -ar 48000 session.m4a`.
+1. **Optional processing, off by default:**
+   - `compress=False`: `gentle_compress()`, a vectorised RMS-envelope downward compressor
+     (threshold −16 dB, 2.5:1, attack 10 ms, release 200 ms).
+   - `polish=False` (chosen per session in review): Studio polish (`core/polish.py`): 70 Hz high-pass,
+     light tone EQ, de-esser, gentle 2:1 compression. No HPF runs unless polish is on.
+2. **Gain to `target_lufs` = −21 LUFS** (not −14; −14 would be ~7 dB louder than the back catalogue).
+   Integrated loudness is measured with `integrated_lufs()`, a vectorised BS.1770-4 meter (≈ 1 s for
+   30 min, matches pyloudnorm to < 0.05 LU; pyloudnorm is used only for non-48 kHz input).
+   Digital-silence pauses fall below the −70 LUFS gate. Gain is clamped to ±`max_gain_db` (30 dB).
+3. **Peak limiter** `limit()`: offline lookahead limiter at `ceiling_db` = **−1.5 dBFS** sample peak
+   (margin for AAC overshoot), 8 ms window, 80 ms release; only regions around over-ceiling peaks are
+   touched, so at −21 LUFS it rarely engages. If it does reduce gain, one corrective trim + re-limit
+   pass brings loudness back to target.
+4. **Seam fades:** raised-cosine (sin²) fade-in and fade-out of `seam_fade_ms` (default 1500 ms) at the
+   start and end of the take. Loop boundaries then go silence→silence, so the loop is inaudible.
+5. **Encode once** (`master_to_m4a`) to the session format: AAC-LC, 128 kbps, mono, 48 kHz,
+   `aac_coder = "fast"`. At 48 kHz, `ffmpeg_tools.encode_pcm_parallel()` splits the take inside
+   digital-silence pauses and encodes the chunks in parallel on all cores (joins sit inside silence);
+   other sample rates go through a temp `mastered.wav` and a single `ffmpeg` encode.
+
+Returns a `MasterReport` (input/output LUFS, gain, deepest limiter reduction, peak, duration).
+`master_wav_file()` is the wav→wav form used by `AssetCache.intro(master=...)`.
 
 ### Module D — Renderer (`core/asset_cache.py`, `core/renderer.py`)
 
