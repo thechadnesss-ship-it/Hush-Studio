@@ -128,6 +128,9 @@ makes speaking hard → "Listen back (last 15 s)" while paused instead.
   playback meter, track panel (Mute/Select, Waveform/Waveform (dB)), amplitude ruler (click = vertical zoom), clip bar,
   peak + RMS waveform, label track for markers, timeline Quick-Play, selection toolbar with typed hh mm ss.sss boxes,
   Audacity's shortcuts (Space, P, Shift+Space, Home/End, arrows, Ctrl+X/C/V/K/T/L/B/M/Z/Y/1/2/3/E/F/A). Icons are drawn
-  in code (not Audacity's art).
+  in code (not Audacity's art). T14 extends the round trip with an Audacity tab-separated label sidecar for cuts, pauses,
+  markers and the playhead (`for_audacity.txt`), passes both files when launching Audacity, and exposes Open in Audacity
+  and Import changes from Takes, Review, and the editor. Import remains undoable and stores the returned audio as a new
+  `audacity_N.wav` source, leaving the original recording untouched.
 - **Live capture (`core/capture.py`):** callback only enqueues; full queue drops + counts (a
   simulated faster-than-real-time source uses backpressure instead). USB mic verified at 48 kHz.
