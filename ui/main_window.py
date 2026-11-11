@@ -36,6 +36,7 @@ from core.takes import TakeLibrary, migrate_sessions_folder
 from . import theme
 from .canva_panel import CanvaPanel
 from .review import ReviewDialog
+from .updates import UpdateController
 from .widgets import Companion, RecordButton, TrafficLight, VUMeter
 from .workers import ImportWorker, PrepareWorker, RenderWorker
 
@@ -118,6 +119,9 @@ class MainWindow(QMainWindow):
         brand = QLabel(APP_NAME)
         brand.setObjectName("brand")
         head.addWidget(brand)
+        self.btn_update = QPushButton("Update available")      # shown by the updater (T23)
+        self.btn_update.setObjectName("link")
+        head.addWidget(self.btn_update)
         head.addStretch(1)
         lbl = QLabel("Video length")
         lbl.setObjectName("muted")
@@ -141,6 +145,8 @@ class MainWindow(QMainWindow):
         self.help_menu = QMenu(self.btn_help)
         self.act_debug = self.help_menu.addAction("Send debug report…")
         self.act_debug.triggered.connect(self.send_debug_report)
+        self.act_updates = self.help_menu.addAction("Check for updates…")
+        self.act_updates.triggered.connect(lambda: self.updater.check(manual=True))
         self.btn_help.setMenu(self.help_menu)
         head.addWidget(self.btn_help)
         lay.addLayout(head)
@@ -299,7 +305,11 @@ class MainWindow(QMainWindow):
         self._mic_changed()
         self._update_intro_button()
         self._start_planner()
+        self.updater = UpdateController(self, self.settings, DATA_ROOT / "updates", self.btn_update)
         self._set_mode("idle")
+        note = self.updater.after_start()
+        if note:
+            self.message.setText(note)
 
     # ================================================================== state / look
 
@@ -332,6 +342,18 @@ class MainWindow(QMainWindow):
             self._glow("off")
         if hasattr(self, "canva_panel"):
             self.canva_panel.setVisible(mode == "done" and self.output is not None and self.output.exists())
+
+    def update_blocker(self) -> str | None:
+        """Why an update has to wait (T23), or None. Never while recording, rendering or uploading."""
+        if self.mode in ("recording", "paused"):
+            return "You're recording. Finish the take first; the update will wait."
+        if self.mode == "busy":
+            return "Hush Studio is busy with your take. Update when it's done."
+        if self.mode == "review":
+            return "Finish reviewing this take first (render it or close it), then update."
+        if any(w.isRunning() for w in self._workers):
+            return "Hush Studio is still working (rendering or uploading). Update when it's done."
+        return None
 
     def _glow(self, light: str, text: str | None = None):
         """Soft window border in the light's colour while recording; none otherwise."""
