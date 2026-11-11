@@ -27,8 +27,9 @@ Never commit `engine_plan.json` on a task branch; it is committed on `main` only
 ## Git: who works where
 - One task per branch, `<agent>/<task id>-<slug>` (Narthen Control creates it when Sam presses Start).
 - Each agent works in its own worktree beside the project folder: `C:\Users\chadj\hush-studio-claude` and
-  `C:\Users\chadj\hush-studio-codex`. Narthen Control creates them on first use. Do not work in the main
-  folder unless the task says so.
+  `C:\Users\chadj\hush-studio-codex`, plus a second one per agent (`...-claude-2`, `...-codex-2`) when the first is busy,
+  so a task waiting in review keeps its branch checked out. Narthen Control creates them on first use and picks the one for
+  your task: work in the folder it opened for you. Do not work in the main folder unless the task says so.
 - Never commit to `main` from a task branch. Sam merges to `main` after review (Narthen Control: Run code
   review, then Merge & finish). Merge `main` into your branch at the start of a task **and again just before setting status=Review**
   (resolve any conflicts and re-run the tests); otherwise Narthen Control's Merge & finish refuses with a conflict message.
