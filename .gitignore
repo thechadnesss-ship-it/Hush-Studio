@@ -27,3 +27,8 @@ ops/claude_usage.json
 # Narthen Control generated files
 outputs/
 Takes/
+
+# local run leftovers
+ops/serve.log
+.pytest-temp*/
+.review-tmp*/

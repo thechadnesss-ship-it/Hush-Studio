@@ -221,8 +221,8 @@
       {
         "week": "2026-W46",
         "note": "auto (live from Claude status line and Codex logs)",
-        "claude": "63%",
-        "codex": "77%"
+        "claude": "64%",
+        "codex": "86%"
       }
     ]
   },
@@ -866,6 +866,110 @@
         "T9"
       ],
       "text": "Fixed round-6 T9 review findings; quality verification is green (11 passed). Commit/main merge blocked by existing worktree index.lock permission denial."
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Claude",
+      "tasks": [
+        "T15"
+      ],
+      "text": "T15 intro manager built; ready for review"
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Codex",
+      "tasks": [
+        "T15"
+      ],
+      "text": "Reviewed T15 intro manager against main; no blocking findings. Focused T15/UI tests: 23 passed. Full-suite/T9 failures and manual GUI limitation recorded as non-blocking follow-ups."
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Autopilot",
+      "tasks": [
+        "T15"
+      ],
+      "text": "T15: changes requested by Autopilot's review (round 1), back to Claude: Quick checks failed after a clean review. Fix them and re-run py -m pytest -q -x:"
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "User",
+      "tasks": [
+        "T15"
+      ],
+      "text": "T15: handed back to Claude to fix Autopilot findings (round 1)"
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Claude",
+      "tasks": [
+        "T15"
+      ],
+      "text": "T15 round 1: pytest-not-found was wrong interpreter; re-ran with project venv, full suite green, no code change"
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Codex",
+      "tasks": [
+        "T6"
+      ],
+      "text": "T6 complete: re-measured real-take FINISH and exact 8h output; updated CLAUDE.md 0.6; pytest green; committed 906e4eb."
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Claude",
+      "tasks": [
+        "T6"
+      ],
+      "text": "Reviewed T6 (docs-only timing record): no blocking findings"
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Codex",
+      "tasks": [
+        "T15"
+      ],
+      "text": "Reviewed T15 against main; no blocking findings. Scoped tests 23 passed; full suite 290 passed, 2 skipped."
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Autopilot",
+      "tasks": [
+        "T15"
+      ],
+      "text": "T15: changes requested by Autopilot's review (round 2), back to Claude: Quick checks failed after a clean review. Fix them and re-run py -m pytest -q -x:"
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "User",
+      "tasks": [
+        "T15"
+      ],
+      "text": "T15: handed back to Claude to fix Autopilot findings (round 2)"
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Autopilot",
+      "tasks": [
+        "T6"
+      ],
+      "text": "T6: autopilot stopped: the reviewer finished twice without recording a result"
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Claude",
+      "tasks": [
+        "T15"
+      ],
+      "text": "T15: fixed quick-check command in narthen.json (venv python); back to Review"
+    },
+    {
+      "date": "2026-11-11",
+      "agent": "Claude",
+      "tasks": [
+        "T15"
+      ],
+      "text": "T15 round 2: quick-check failure was wrong interpreter (no pytest); re-ran in project venv, 290 passed, no code change"
     }
   ],
   "tasks": [
@@ -1002,7 +1106,7 @@
       "priority": "P1",
       "size": "S",
       "owner": "Codex",
-      "status": "To do",
+      "status": "Blocked",
       "depends": [],
       "zone": "Z-CORE",
       "files": "tests/, CLAUDE.md",
@@ -1010,8 +1114,8 @@
       "scope": "Run the full test suite and a real-take FINISH to exactly 8 h; record timings in CLAUDE.md section 0.6.",
       "acceptance": "pytest green; FINISH timing and exact 8h 00m 00s result recorded in CLAUDE.md 0.6.",
       "verify": "pytest; python main.py FINISH on the real take.",
-      "branch": "",
-      "notes": "",
+      "branch": "codex/T6-run-full-pytest-end-to-end",
+      "notes": "Review clean: diff is a single CLAUDE.md 0.6 line replacing the stale ~5 s real-asset figure with re-measured real-take numbers (exact 8 h 00 m 00 s, FINISH 27.59 s, per-stage breakdown, 247.07 s end-to-end); no code changed, so no regression risk. Follow-ups (non-blocking): 1) pytest result (green/count) is not recorded in CLAUDE.md although acceptance mentions it; the '171 tests' line is unchanged. 2) The earlier '~15 s FINISH' bullet (37:30 edited take) now sits beside 27.59 s without a note explaining the different take/hardware state.\n\nAUTOPILOT STOPPED (2026-11-11): the reviewer finished twice without recording a result",
       "legacy": "",
       "findings": [],
       "decisions": [],
@@ -1247,7 +1351,7 @@
       "priority": "P1",
       "size": "M",
       "owner": "Claude",
-      "status": "To do",
+      "status": "Done",
       "depends": [],
       "zone": "Z-UI",
       "files": "ui/, core/asset_cache.py, config/",
@@ -1255,13 +1359,18 @@
       "scope": "An Intros screen: upload a video or image intro, preview it, name it, choose the active one, and keep older ones. Changing the active intro rebuilds the cached intro and black loop automatically (hash-keyed cache already exists). Validate resolution, frame rate and length, and show a clear message if the file is unsuitable.",
       "acceptance": "Upload a new intro, set it active, finish a take: the render uses it and the old one is still available. A bad file is rejected with an understandable message.",
       "verify": "pytest for cache rebuild on intro change; manual upload.",
-      "branch": "",
-      "notes": "Intro is a silent video card at the start of the video track; audio starts at t = 0 (see CLAUDE.md 0.5).",
+      "branch": "claude/T15-intro-manager-upload-replace-and",
+      "notes": "Round 2 finding was environmental, not a code defect: the quick check ran pytest with the system pythonw.exe (no pytest). No code change, so no new regression test. Re-verified with the project venv (AGENTS.md): main already merged; tests/test_intros.py + tests/test_ui.py 23 passed; full pytest -q -x 290 passed, 2 skipped. Manual GUI upload not exercised (autopilot). Suggest the quick check use C:\\Users\\chadj\\pika_meditate\\.venv\\Scripts\\python.exe -m pytest.",
       "legacy": "",
       "findings": [],
       "decisions": [],
       "resolves": [],
-      "tier": "Standard"
+      "tier": "Standard",
+      "handback": {
+        "from": "Autopilot",
+        "to": "Claude",
+        "round": 2
+      }
     },
     {
       "id": "T16",
