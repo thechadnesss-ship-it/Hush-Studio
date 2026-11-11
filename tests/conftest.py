@@ -89,8 +89,8 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
-    if config.getoption("--ui", default=False):
-        from progress_plugin import ProgressUI
+    from progress_plugin import ProgressUI, ui_enabled
+    if ui_enabled(config):
         config.pluginmanager.register(ProgressUI(), "progress-ui")
 
 

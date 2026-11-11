@@ -109,11 +109,10 @@ def pump():
                 S["finished"] = True
                 bad = S["failed"] or m.get("failed")
                 head.config(fg="#B00020" if bad else "#1B7F3B")
-                current.config(text="Finished: " + ("FAILURES (window stays open)" if bad else "all passed"))
+                current.config(text="Finished: " + ("FAILURES (window closes in 3 min)" if bad else "all passed"))
                 timing.config(text=f"Took {fmt(time.time() - S['start'])}")
                 bar["value"] = bar["maximum"]
-                if not bad:
-                    root.after(4000, root.destroy)
+                root.after(4000 if not bad else 180000, root.destroy)  # failures linger 3 min
                 return
     except queue.Empty:
         pass
@@ -126,7 +125,20 @@ root.mainloop()
 
 def pytest_addoption(parser):
     parser.addoption("--ui", action="store_true", default=False,
-                     help="show a live progress window (task, progress bar, ETA)")
+                     help="force the live progress window on (it is on by default)")
+    parser.addoption("--no-ui", action="store_true", default=False,
+                     help="don't show the live progress window (or set HUSH_TEST_UI=0)")
+
+
+def ui_enabled(config):
+    """On by default so task/review runs show their progress; off for opt-outs and nested runs."""
+    if config.getoption("--ui", default=False):
+        return True
+    if (config.getoption("--no-ui", default=False) or os.environ.get("HUSH_TEST_UI") == "0"
+            or os.environ.get("HUSH_TEST_UI_ACTIVE")):  # a pytest run inside a test: no 2nd window
+        return False
+    opt = config.option
+    return not (getattr(opt, "collectonly", False) or getattr(opt, "help", False))
 
 
 def _git(*args):
@@ -200,8 +212,13 @@ class ProgressUI:
         self.total = len(self.remaining)
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         try:
+            # stdout/stderr go to DEVNULL: a window that outlives pytest must not keep the caller's
+            # output pipe open (Narthen / a reviewer would otherwise wait for it to close).
             self.proc = subprocess.Popen([sys.executable, "-c", _WINDOW], stdin=subprocess.PIPE,
-                                         text=True, encoding="utf-8", creationflags=flags)
+                                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                         text=True, encoding="utf-8", creationflags=flags,
+                                         env={**os.environ, "HUSH_TEST_UI_ACTIVE": "1"})
+            os.environ["HUSH_TEST_UI_ACTIVE"] = "1"
         except Exception:
             self.proc = None
             return
