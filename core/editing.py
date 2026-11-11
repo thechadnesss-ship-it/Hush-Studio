@@ -24,7 +24,7 @@ from dataclasses import dataclass, replace
 
 import numpy as np
 
-from .edl import DEFAULT_SOURCE, Cut, EditList, Gain, Insert, Marker, Pause, Timeline
+from .edl import DEFAULT_SOURCE, RAW_SOURCE, Cut, EditList, Gain, Insert, Marker, Pause, Timeline
 
 MANUAL_XFADE_S = 0.010          # Sam's own cuts: a short crossfade, so what she sees is what she gets
 MAX_UNDO = 300
@@ -83,6 +83,27 @@ def compute_auto_pauses(audio: np.ndarray, edl: EditList, auto=None, speech=None
     speech = detect_speech(audio, sr) if speech is None else speech
     pauses, _ = auto_edit(audio, sr, speech, edl.duration, auto or AutoEditConfig(), cuts=edl.active_cuts())
     return pauses
+
+
+def compute_auto_edit(audio: np.ndarray, edl: EditList, auto=None, speech=None,
+                      marker_template=None) -> tuple[list[Pause], list[Cut]]:
+    """The "Auto-edit pauses" step for the whole take, exactly as the live path (`session.prepare`)
+    does it: pause shaping (respecting the cuts already in `edl`) plus flub proposals, which never
+    overlap an existing cut (plane cuts win)."""
+    from .auto_edit import AutoEditConfig, auto_edit, find_flubs, find_markers
+    from .vad import detect_speech
+    sr = edl.sample_rate
+    auto = auto or AutoEditConfig()
+    speech = detect_speech(audio, sr) if speech is None else speech
+    pauses, template = auto_edit(audio, sr, speech, edl.duration, auto, cuts=edl.active_cuts(),
+                                 template=marker_template)
+    flubs: list[Cut] = []
+    if auto.flub_detect:
+        markers, _ = find_markers(audio, sr, speech, auto, template) if auto.marker_detect else ([], None)
+        for s, e in find_flubs(audio, sr, speech, markers, auto):
+            if not any(s < c.end and c.start < e for c in edl.cuts + flubs):      # nor an earlier proposal
+                flubs.append(Cut(s, e, "flub", keep=True, proposed=True, note="said again"))
+    return pauses, flubs
 
 
 def compute_plane_cuts(raw: np.ndarray, audio: np.ndarray, edl: EditList, sa: float, sb: float,
@@ -401,6 +422,70 @@ class Editor:
             else:
                 self.edl.gains.append(self._gain_for(a, b, db=db, reason="normalise"))
 
+    # ------------------------------------------------------------------ steps (T26)
+    # After an import the take opens raw; each processing step is one undoable change of the list,
+    # and each can be taken back on its own later ("Undo" on its row), not only in stack order.
+
+    STEPS = ("denoise", "planes", "pauses", "normalise", "polish")
+
+    def step_state(self) -> dict[str, bool]:
+        e = self.edl
+        return {
+            "denoise": e.source == DEFAULT_SOURCE,
+            "planes": any(c.reason == "plane" for c in e.cuts),
+            "pauses": any(not p.locked for p in e.pauses) or any(c.reason == "flub" and c.proposed for c in e.cuts),
+            "normalise": any(g.reason == "normalise" and g.on is None and g.start <= 1e-6
+                             and g.end >= e.duration - 1e-6 for g in e.gains),
+            "polish": bool(e.polish),
+        }
+
+    def set_source(self, audio: np.ndarray, source: str, label: str) -> None:
+        """Swap the audio under the same edits (raw.flac ↔ clean.wav: noise removal keeps every
+        sample where it was, so cuts, pauses and markers still line up). Undoable."""
+        n = int(round(self.edl.duration * self.sr))
+        x = np.asarray(audio, dtype=np.float32)
+        if abs(len(x) - n) > self.sr // 2:
+            raise ValueError(f"{source} doesn't line up with the take ({len(x) / self.sr:.1f} s vs "
+                             f"{n / self.sr:.1f} s).")
+        x = x[:n] if len(x) >= n else np.pad(x, (0, n - len(x)))
+        with self.change(label):
+            self.sources[source] = x
+            self.edl.source = source
+            self.audio = x
+
+    def apply_auto_edit(self, pauses: list[Pause], flubs: list[Cut]) -> int:
+        """Whole-take auto-edit: pause shaping plus flub proposals, one undo step."""
+        with self.change("Auto-edit pauses"):
+            keep = [p for p in self.edl.pauses if p.locked]
+            add = [p for p in pauses if not any(p.start < k.end and k.start < p.end for k in keep)]
+            self.edl.pauses = sorted(keep + add, key=lambda p: p.start)
+            have = [c for c in self.edl.cuts if not (c.reason == "flub" and c.proposed)]
+            self.edl.cuts = have + [c for c in flubs if not any(c.start < o.end and o.start < c.end for o in have)]
+        return len(add)
+
+    def remove_auto_edit(self) -> None:
+        """Undo the auto-edit step alone: automatic pauses and still-open flub proposals go
+        (pauses and cuts Sam set herself stay)."""
+        with self.change("Undo auto-edit pauses"):
+            self.edl.pauses = [p for p in self.edl.pauses if p.locked]
+            self.edl.cuts = [c for c in self.edl.cuts if not (c.reason == "flub" and c.proposed)]
+
+    def remove_plane_cuts(self) -> None:
+        with self.change("Undo plane noise removal"):
+            self.edl.cuts = [c for c in self.edl.cuts if c.reason != "plane"]
+
+    def remove_normalise(self) -> None:
+        """Take back the whole-take Normalise (normalising a selection is a hand edit and stays)."""
+        with self.change("Undo normalise"):
+            ids = {i.id: i.length for i in self.edl.inserts}
+            self.edl.gains = [g for g in self.edl.gains if not (
+                g.reason == "normalise" and g.start <= 1e-6
+                and g.end >= (self.edl.duration if g.on is None else ids.get(g.on, 0.0)) - 1e-6)]
+
+    def set_polish(self, on: bool) -> None:
+        with self.change("Studio polish" if on else "Undo studio polish"):
+            self.edl.polish = bool(on)
+
     def bring_back(self, audio: np.ndarray, source: str) -> None:
         """Audio Sam edited in Audacity (the whole edited take) becomes the new base. Every earlier
         edit is in that file already, so the list starts fresh; markers move with the audio."""
@@ -420,8 +505,9 @@ class Editor:
 
     @property
     def on_original(self) -> bool:
-        """Edits refer to clean.wav (so the raw take lines up with them: plane detection works)."""
-        return self.edl.source == DEFAULT_SOURCE
+        """Edits refer to the take itself (clean.wav or raw.flac), so the raw take lines up with
+        them and plane detection works; False for an Audacity version."""
+        return self.edl.source in (DEFAULT_SOURCE, RAW_SOURCE)
 
     # ------------------------------------------------------------------ internals
 

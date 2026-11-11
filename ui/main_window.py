@@ -35,7 +35,7 @@ from core.takes import TakeLibrary, migrate_sessions_folder
 from . import theme
 from .review import ReviewDialog
 from .widgets import Companion, RecordButton, TrafficLight, VUMeter
-from .workers import PrepareWorker, RenderWorker
+from .workers import ImportWorker, PrepareWorker, RenderWorker
 
 SR = 48000
 CLIP_DB = -0.01                    # peak at full scale (16-bit max is −0.0003 dBFS)
@@ -569,7 +569,6 @@ class MainWindow(QMainWindow):
         if self.recorder is not None:
             self.finish_recording()
         elif self.mode == "done" and self.edl is not None:
-            self.polish = getattr(self, "polish", False)
             self.render()
 
     def finish_recording(self):
@@ -603,10 +602,17 @@ class MainWindow(QMainWindow):
         self._set_mode("busy")
         self.companion.say("preparing")
         self.btn_open.hide()
-        w = PrepareWorker(self.session, import_src=path, cfg=self._cfg())
+        w = ImportWorker(self.session, path)          # raw take only; she picks the steps in the editor (T26)
         w.stage.connect(self.message.setText)
-        self._run(w, lambda edl, clean, source: self._prepared(edl, clean, source=source,
-                                                               imported=True))
+        self._run(w, self._imported)
+
+    def _imported(self, edl, raw):
+        self.edl, self.clean = edl, raw
+        self.output = None
+        self._show_plan(edl.output_duration())
+        self.timer.setText(_hms(edl.output_duration()))
+        self.message.setText("Imported. Choose the steps on the right of the editor, or Do all.")
+        self.open_editor()
 
     # ================================================================== review + render
 
@@ -635,7 +641,7 @@ class MainWindow(QMainWindow):
         elif r == ReviewDialog.IMPORT_AUDACITY:
             self.open_editor("import")
         elif r:
-            self.polish = dlg.polish.isChecked()
+            edl.polish = dlg.polish.isChecked()
             self.render()
         else:
             self._set_mode("done")
@@ -655,13 +661,13 @@ class MainWindow(QMainWindow):
         self._show_plan(self.edl.output_duration())
         self.timer.setText(_hms(self.edl.output_duration()))
         if r:
-            self.polish = dlg.polish.isChecked()
-            self.render()
+            self.render()                           # Studio polish is a step in the editor: edl.polish
         else:
             self._set_mode("done")
             self.message.setText("Edits saved. Reopen this take from Takes any time.")
 
     def render(self):
+        self.polish = bool(getattr(self.edl, "polish", False))      # the take's own choice (Steps panel / review)
         cfg = self._cfg()
         self._set_mode("busy")
         self.companion.say("rendering", n="…", h=cfg.target_hours)

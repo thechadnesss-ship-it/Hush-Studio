@@ -367,3 +367,87 @@ def test_block_rms_for_the_waveform():
     assert len(ms) == len(lo) and ms.max() == pytest.approx(hi.max() ** 2, rel=0.02)
     mid = int(ed.tl.src_to_out(4.5 * SR)[0]) // B
     assert ms[mid] == 0 and hi[mid] == 0                    # the shaped pause is digital silence
+
+
+# ----------------------------------------------------------------- T26: import raw, then steps
+
+def _hashes(x):
+    import hashlib
+    return hashlib.sha256(np.ascontiguousarray(x).tobytes()).hexdigest()
+
+
+def test_each_step_applies_and_undoes_on_its_own():
+    """Steps on a raw take: noise removal swaps the audio under the edits, the others change the
+    list; any one of them can be taken back later without losing the ones after it."""
+    from core.edl import RAW_SOURCE
+    from core.editing import compute_auto_edit
+    x, _ = speech_take(120.0, -24, seed=31)
+    raw = (x + 0.003 * np.random.default_rng(1).standard_normal(len(x))).astype(np.float32)
+    h_raw = _hashes(raw)
+    ed = Editor(EditList(duration=120.0, sample_rate=SR, source=RAW_SOURCE), raw)
+    assert ed.step_state() == dict.fromkeys(Editor.STEPS, False) and ed.on_original
+    ed.set_source(x[:-7], "clean.wav", "Background noise removed")          # a few samples short: padded
+    assert ed.edl.source == "clean.wav" and len(ed.audio) == len(raw) and ed.step_state()["denoise"]
+    ed.apply_plane_cuts([Cut(30.0, 34.0, "plane")], 0, 120.0)
+    pauses, flubs = compute_auto_edit(ed.audio, ed.edl)
+    flubs.append(Cut(80.0, 81.5, "flub", keep=True, proposed=True))
+    ed.silence(10.0, 11.0)                                                    # Sam's own (locked) pause
+    ed.apply_auto_edit(pauses, flubs)
+    db = compute_normalise(ed.tl, ed.audio)
+    ed.apply_normalise(db)
+    ed.set_polish(True)
+    assert all(ed.step_state().values()), ed.step_state()
+    locked = [p for p in ed.edl.pauses if p.locked]
+    assert len(locked) == 1
+
+    # out of order: noise removal first, then planes; everything else stays
+    ed.set_source(raw, RAW_SOURCE, "Background noise removal taken out")
+    st = ed.step_state()
+    assert not st["denoise"] and st["planes"] and st["pauses"] and st["normalise"] and st["polish"]
+    assert ed.audio is ed.sources[RAW_SOURCE]
+    ed.remove_plane_cuts()
+    assert not any(c.reason == "plane" for c in ed.edl.cuts) and ed.step_state()["pauses"]
+    ed.remove_auto_edit()
+    assert [p.id for p in ed.edl.pauses] == [p.id for p in locked]          # her own pause stays
+    assert not any(c.reason == "flub" and c.proposed for c in ed.edl.cuts)
+    ed.remove_normalise()
+    ed.set_polish(False)
+    assert not any(ed.step_state().values())
+    # ...and every one of those was itself an undo step
+    for _ in range(5):
+        ed.undo()
+    assert ed.edl.source == "clean.wav" and all(ed.step_state().values())
+    assert _hashes(raw) == h_raw
+
+
+def test_set_source_refuses_audio_that_does_not_line_up():
+    from core.edl import RAW_SOURCE
+    ed = Editor(EditList(duration=10.0, sample_rate=SR, source=RAW_SOURCE), ramp(10.0))
+    with pytest.raises(ValueError):
+        ed.set_source(ramp(9.0), "clean.wav", "x")
+    assert ed.edl.source == RAW_SOURCE and not ed.can_undo
+
+
+def test_do_all_steps_reproduce_the_automatic_prepare(tmp_path):
+    """'Do all' (noise removal → planes → auto-edit) gives exactly the edit list the old automatic
+    import built with session.prepare, so the render is the same."""
+    from core.denoise import SpectralGate
+    from core.edl import RAW_SOURCE
+    from core.editing import compute_auto_edit
+    from core.session import Session, denoise, prepare
+    x, _ = speech_take(180.0, -24, seed=73)
+    raw = (x + plane(180.0, t_peak=110.0, peak_db=-30)).astype(np.float32)
+    s = Session(tmp_path / "s")
+    s.dir.mkdir()
+    clean, _ = denoise(s, raw, denoiser=SpectralGate())
+    ref = prepare(s, raw, clean)
+    assert any(c.reason == "plane" for c in ref.cuts)
+
+    ed = Editor(EditList(duration=len(raw) / SR, sample_rate=SR, source=RAW_SOURCE), raw)
+    ed.set_source(clean, "clean.wav", "Background noise removed")
+    ed.apply_plane_cuts(compute_plane_cuts(raw, ed.audio, ed.edl, 0.0, ed.edl.duration), 0.0, ed.edl.duration)
+    ed.apply_auto_edit(*compute_auto_edit(ed.audio, ed.edl))
+    key_c = lambda e: [(round(c.start, 6), round(c.end, 6), c.reason, c.keep, c.proposed) for c in e.cuts]
+    key_p = lambda e: [(round(p.start, 6), round(p.end, 6), round(p.new_length, 6), p.kind, p.locked) for p in e.pauses]
+    assert key_c(ed.edl) == key_c(ref) and key_p(ed.edl) == key_p(ref)
+    assert np.array_equal(ed.edl.render(ed.audio), ref.render(clean))

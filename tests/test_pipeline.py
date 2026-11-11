@@ -72,3 +72,23 @@ def test_session_end_to_end_with_a_plane(tmp_path, cfg, media):
     assert ff.duration(out) == pytest.approx(3600.0, abs=0.01)
     assert rep.output_lufs == pytest.approx(c.target_lufs, abs=0.5)
     assert set(tm.steps) == {"apply_edits", "master_encode", "assets", "render"}
+
+
+def test_raw_import_with_no_steps_renders_from_raw_flac(tmp_path, cfg, media):
+    """T26: an imported take Sam renders without applying any step: the edit list names raw.flac and
+    finish() reads that file (it used to assume clean.wav)."""
+    import soundfile as sf
+    from core.edl import RAW_SOURCE
+    from core.session import import_take
+    x, _ = speech_take(120.0, -24, seed=5)
+    src = tmp_path / "take.wav"
+    sf.write(src, x, SR, subtype="FLOAT")
+    s = Session(tmp_path / "sess")
+    raw = import_take(src, s)
+    EditList(duration=len(raw) / SR, sample_rate=SR, source=RAW_SOURCE).save(s.edits)
+    assert not s.clean.exists()
+    c = cfg.with_(target_hours=1)
+    plan, out, rep, _ = finish(s, c, media["cache"], intro_card=None)
+    assert ff.duration(out) == pytest.approx(3600.0, abs=0.01)
+    assert rep.output_lufs == pytest.approx(c.target_lufs, abs=0.5)
+    assert not s.clean.exists()
