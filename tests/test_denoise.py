@@ -1,4 +1,7 @@
 """Background noise removal: the built-in spectral gate (DeepFilterNet tested when installed)."""
+import os
+from pathlib import Path
+
 import numpy as np
 import pytest
 import soundfile as sf
@@ -101,6 +104,23 @@ def test_deepfilter_array_stages_the_cli_input(monkeypatch, tmp_path):
     assert len(denoised) == len(quiet)
 
 
+def test_deepfilter_floor_stays_at_validated_level_for_normal_take(monkeypatch, tmp_path):
+    seen = []
+
+    def fake_deepfilter(src, dst, attenuation_limit_db=100.0, post_filter=False):
+        audio, sr = sf.read(src, dtype="float32")
+        seen.append(20 * np.log10(np.sqrt(np.mean(audio[SR // 2:] ** 2)) + 1e-20))
+        sf.write(dst, audio, sr, subtype="FLOAT")
+        return dst
+
+    monkeypatch.setattr("core.denoise.deepfilter_file", fake_deepfilter)
+    normal = np.zeros(SR * 2, dtype=np.float32)
+    normal[0] = 10 ** (-4 / 20)
+    from core.denoise import deepfilter_array
+    deepfilter_array(normal, SR, workers=1, work_dir=tmp_path)
+    assert seen == [pytest.approx(-65.0, abs=0.5)]
+
+
 def test_quiet_take_keeps_phrase_endings_and_has_no_dropouts():
     """A take 20 dB below normal must keep the same relative VAD/edit path."""
     from core.audio_quality import analyze
@@ -129,6 +149,33 @@ def test_quiet_take_keeps_phrase_endings_and_has_no_dropouts():
 
 
 REAL_RAW = __import__("pathlib").Path(__file__).resolve().parent.parent / "riverside_edit_- 9-10 nov_25_feb.wav"
+
+_quiet_candidates = [
+    Path(os.environ["HUSH_T25_QUIET_RAW"]) if "HUSH_T25_QUIET_RAW" in os.environ else None,
+    Path(__file__).resolve().parent.parent / "Takes" / "2026-11-11_135033" / "raw.flac",
+    Path.home() / "pika_meditate" / "Takes" / "2026-11-11_135033" / "raw.flac",
+    Path.home() / "pika_meditate" / "Takes" / "2026-11-11_154948" / "raw.flac",
+]
+REAL_QUIET_RAW = next((p for p in _quiet_candidates if p is not None and p.exists()), _quiet_candidates[1])
+
+
+@pytest.mark.skipif(deepfilter_exe() is None or not REAL_QUIET_RAW.exists(),
+                    reason="needs DeepFilterNet and a real quiet take")
+def test_deepfilternet_keeps_a_real_quiet_take_clean(tmp_path):
+    """The actual CLI must preserve a quiet voice without introducing dropouts."""
+    from core.audio_quality import analyze
+    from core.denoise import deepfilter_array
+    from core.diagnostics import zero_gaps
+    from core.session import load_mono_48k
+
+    x = load_mono_48k(REAL_QUIET_RAW)
+    assert 20 * np.log10(np.abs(x).max() + 1e-20) < -20.0
+    y = deepfilter_array(x, SR, workers=1, work_dir=tmp_path)
+    report = analyze(x, y, warn_true_peak=False)
+    assert len(y) == len(x)
+    assert zero_gaps(y) == []
+    assert report.dropout_count == 0
+    assert report.distortion_db < -10.0
 
 
 @pytest.mark.skipif(deepfilter_exe() is None or not REAL_RAW.exists(),

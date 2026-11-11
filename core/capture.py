@@ -34,7 +34,7 @@ from .log_setup import get_logger
 
 log = get_logger("capture")
 
-from .denoise import DFN_PREROLL_S, SpectralGate, deepfilter_array, deepfilter_exe
+from .denoise import DFN_PREROLL_S, SpectralGate, deepfilter_array, deepfilter_exe, deepfilter_input_gain_db
 from .plane_guard.ear import Ear
 from .plane_guard.guard import Guard, GuardUpdate
 from .plane_guard.sky_radar import Home, SkyRadar
@@ -187,6 +187,7 @@ class Recorder:
         self._pending_len = 0
         self._pending_db: list[float] = []
         self._dfn_context = np.zeros(0, np.float32)     # end of the previous segment: model pre-roll
+        self._dfn_stage_gain_db: float | None = None    # one gain for the whole live take
         self._futures: list[cf.Future] = []
         self._pool = cf.ThreadPoolExecutor(max_workers=2) if self.use_dfn else None
         self._raw_file: sf.SoundFile | None = None
@@ -386,4 +387,8 @@ class Recorder:
         self._pending, self._pending_len, self._pending_db = [], 0, []
         ctx = self._dfn_context
         self._dfn_context = np.concatenate([ctx, seg])[-int(DFN_PREROLL_S * SR):]
-        self._futures.append(self._pool.submit(deepfilter_array, seg, SR, 100.0, 1, self.session.dir, ctx))
+        if self._dfn_stage_gain_db is None:
+            self._dfn_stage_gain_db = deepfilter_input_gain_db(seg, ctx)
+        self._futures.append(self._pool.submit(
+            deepfilter_array, seg, SR, 100.0, 1, self.session.dir, ctx,
+            stage_gain_db=self._dfn_stage_gain_db))

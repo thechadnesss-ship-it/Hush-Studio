@@ -228,7 +228,6 @@ DFN_HEADROOM = 0.9        # the CLI writes 16-bit PCM, which hard-clips at ±1.0
 DFN_FLOOR_DBFS = -65.0    # white floor added to the CLI's input (it removes it again), see below
 DFN_TARGET_PEAK_DBFS = -12.0
 DFN_MAX_STAGE_GAIN_DB = 24.0
-DFN_FLOOR_RELATIVE_DB = -53.0
 _DFN_FLOOR = np.random.default_rng(7).standard_normal(1 << 20).astype(np.float32)
 
 
@@ -253,7 +252,8 @@ def deepfilter_input_gain_db(x: np.ndarray, context: np.ndarray | None = None,
 
 def deepfilter_array(x: np.ndarray, sr: int = SR, attenuation_limit_db: float = 100.0,
                      workers: int | None = None, work_dir: Path | None = None,
-                     context: np.ndarray | None = None) -> np.ndarray:
+                     context: np.ndarray | None = None,
+                     stage_gain_db: float | None = None) -> np.ndarray:
     """DeepFilterNet over an array, split at natural pauses and run on all cores at once
     (≈ 83 s single-process for 33 min on a 4-core i5). Returns float32 aligned to the input
     and exactly its length. Quiet inputs are staged toward ``DFN_TARGET_PEAK_DBFS`` before the
@@ -278,17 +278,17 @@ def deepfilter_array(x: np.ndarray, sr: int = SR, attenuation_limit_db: float = 
     pre = int(DFN_PREROLL_S * sr)
     ctx = np.zeros(0, np.float32) if context is None or pre == 0 else np.asarray(context, np.float32)[-pre:]
     peak = float(max(np.abs(x).max(initial=0.0), np.abs(ctx).max(initial=0.0)))
-    stage_gain_db = deepfilter_input_gain_db(x, ctx)
+    if stage_gain_db is None:
+        stage_gain_db = deepfilter_input_gain_db(x, ctx)
+    else:
+        stage_gain_db = float(np.clip(stage_gain_db, 0.0, DFN_MAX_STAGE_GAIN_DB))
     stage_scale = np.float32(10 ** (stage_gain_db / 20))
     # Protect the CLI after the quiet-take gain stage. The inverse scale is applied to the
     # output below so denoising remains level-neutral for diagnostics and downstream mastering.
     scale = np.float32(DFN_HEADROOM / peak / stage_scale if peak * stage_scale > DFN_HEADROOM else stage_scale)
-    staged_peak = peak * float(scale)
-    staged_peak_db = -120.0 if staged_peak <= 0 else 20 * np.log10(staged_peak)
-    # Keep the measured -65 dBFS minimum needed for phrase tails, while making the injected
-    # floor relative to the staged take rather than to the source recording's absolute level.
-    floor_db = max(DFN_FLOOR_DBFS, staged_peak_db + DFN_FLOOR_RELATIVE_DB)
-    floor = np.float32(10 ** (floor_db / 20))
+    # Keep the measured -65 dBFS floor needed for phrase tails. Raising it for a normal-level
+    # take makes digital-silence pauses noisier and regresses the validated dropout fix.
+    floor = np.float32(10 ** (DFN_FLOOR_DBFS / 20))
     off = len(ctx)                                 # x starts here in the virtual stream [ctx, x]
 
     def stream(lo: int, hi: int) -> np.ndarray:
