@@ -533,3 +533,9 @@ ever sold, revisit licensing.
 - `cache/` is disposable; every cached file is keyed by a hash of its inputs and settings.
 - **Artwork:** the mascot is Pokémon/Nintendo IP. Fine for a personal tool, but if the app is ever
   shared, sold, or shown on the channel, swap in an original mascot; the `companion_*` names make it a drop-in.
+- **Intro manager (T15, `core/intros.py`, `ui/intros.py`):** Settings → "Intro: <name>" opens the Intros screen. Library in `Intros/`
+  (`intros.json` + `<id>/card.*`): upload a video (copied) or a picture (becomes a 10 s still card), name, preview (system player),
+  choose active / "No intro", rename, delete (not the active one); older intros are kept. Validation with plain-language errors:
+  video/picture ≥ 1280×720 and 16:9 (±3%), video 1–120 s, readable frame rate. The render takes `IntroLibrary.active_path()`; the
+  intro video cache is hash-keyed on file bytes so changing the active intro builds a new cache entry (old entries stay, switching
+  back is instant). The plan line uses the active intro's real length. First run seeds "Original intro" from the old single-file setting.
