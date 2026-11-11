@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 import traceback
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -15,6 +16,8 @@ from core.audio_quality import analyze
 from core.config import RenderConfig
 from core.edl import EditList
 from core.session import Session, denoise, finish, import_take, prepare
+
+logger = logging.getLogger(__name__)
 
 
 class PrepareWorker(QThread):
@@ -78,6 +81,7 @@ class AudioQualityWorker(QThread):
             # headroom is informational here, not a reason to reject a take.
             self.done.emit(analyze(source, self.processed, warn_true_peak=False))
         except Exception:
+            logger.exception("Audio quality check failed")
             self.done.emit(None)
 
 
