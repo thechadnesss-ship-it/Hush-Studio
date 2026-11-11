@@ -87,6 +87,25 @@ def run_self_test(work: Path | None = None) -> dict:
         return f"{sd.get_portaudio_version()[1]}; {len(ins)} input device(s)"
     _check("sounddevice (PortAudio)", portaudio, results)
 
+    def mic_profiles_and_levels():
+        """T30: mics.toml loads, every mic has open settings + plain tips, and the level check calls a
+        quiet, a good and a too-loud synthetic take correctly (no hardware needed)."""
+        from .mic_check import level_verdict
+        from .mic_profiles import load_profiles
+        voice = _synthetic_take(5.0)
+        voice /= np.abs(voice).max()
+        done = []
+        for p in load_profiles():
+            if not (p.quiet_tip and p.loud_tip and p.room_tip and 480 <= p.blocksize <= 9600):
+                raise AssertionError(f"{p.id}: missing tips or bad blocksize {p.blocksize}")
+            for want, peak_db in (("quiet", -32.0), ("good", -10.0), ("loud", -0.5)):
+                got = level_verdict((voice * 10 ** (peak_db / 20)).astype(np.float32), p).verdict
+                if got != want:
+                    raise AssertionError(f"{p.id}: a {want} take was called {got}")
+            done.append(p.id)
+        return ", ".join(done)
+    _check("mic profiles + level check", mic_profiles_and_levels, results)
+
     def deepfilter():
         from .denoise import deepfilter_exe, deepfilter_file
         import soundfile as sf

@@ -14,6 +14,15 @@
 #
 # expected_speech_dbfs = typical sentence peak at a normal distance, before calibration gain
 # (the mic-check in Settings measures the real value per mic; this is only a starting hint).
+#
+# How to open it (T30). Hush always records 48 kHz mono float32. Open order: `best_host_api`
+# (WASAPI exclusive first when `exclusive = true`, then WASAPI shared) -> WDM-KS -> DirectSound -> MME
+# -> Windows' default. Exclusive fails while Riverside/Zoom/Teams hold the mic; shared is next.
+#   blocksize    = frames per callback (4800 = 100 ms; the live meters assume 100 ms)
+#   latency      = "high" (bigger driver buffer: no lost sound; the take is not monitored live) | "low" | seconds
+#   auto_convert = let WASAPI shared mode convert when Windows runs the mic at 44.1 kHz
+# Level-check advice: `quiet_tip`, `loud_tip`, `room_tip` override the built-in plain-language
+# tips in core/mic_profiles.py (leave them out to use the built-ins).
 
 [[mic]]
 id = "samson_q2u"
@@ -26,6 +35,9 @@ connection = "usb"
 expected_speech_dbfs = -29.5
 best_host_api = "Windows WASAPI"
 exclusive = true
+blocksize = 4800
+latency = "high"
+auto_convert = true
 notes = "Sam's mic. Measured 2026-11-11: on MME, DirectSound, WASAPI and WDM-KS; WASAPI takes 48 kHz shared and exclusive (44.1 kHz shared fails); room about -60 dBFS on every path. Quiet dynamic: needs about +20 dB make-up."
 
 [[mic]]
@@ -40,6 +52,9 @@ connection = "usb or xlr (via interface)"
 expected_speech_dbfs = -20.0
 best_host_api = "Windows WASAPI"
 exclusive = true
+blocksize = 4800
+latency = "high"
+auto_convert = true
 notes = "Large-diaphragm condenser: sensitive, picks up more room and planes than the Q2U. Through an interface the level depends on the interface's gain knob. NT1 5th gen / NT-USB are USB and show 'RODE'/'NT' names."
 
 [[mic]]
@@ -54,6 +69,9 @@ connection = "usb"
 expected_speech_dbfs = -30.0
 best_host_api = "Windows WASAPI"
 exclusive = true
+blocksize = 4800
+latency = "high"
+auto_convert = true
 notes = "Budget USB condenser. Often named 'USB PnP Sound Device'. Measured on the dev laptop's USB PnP mic: speech about -40 LUFS, room about -56 dBFS (~15 dB SNR). Fixed hardware gain on many models: use calibration gain."
 
 [[mic]]

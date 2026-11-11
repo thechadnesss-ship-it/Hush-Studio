@@ -14,7 +14,7 @@ Manual check:  python -m core.mic_select [--profile <id>]
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .mic_profiles import GENERIC, MicProfile, clean_name, detect, get_profile, profile_for_device
 
@@ -26,6 +26,7 @@ class Candidate:
     device: int
     exclusive: bool
     label: str
+    api: str = field(default="", compare=False)      # host API name (T30: WASAPI shared gets auto_convert)
 
 
 def _same_mic(a: str, b: str) -> bool:
@@ -71,10 +72,10 @@ def plan(devices: list[dict], hostapis: list[dict], device: int | str | None = N
     for i, d in same:
         if api(d) == "Windows WASAPI":
             if exclusive:
-                out.append(Candidate(i, True, "WASAPI exclusive (direct from the mic)"))
-            out.append(Candidate(i, False, "WASAPI shared"))
+                out.append(Candidate(i, True, "WASAPI exclusive (direct from the mic)", api(d)))
+            out.append(Candidate(i, False, "WASAPI shared", api(d)))
         elif api(d) in API_RANK:
-            out.append(Candidate(i, False, api(d)))
+            out.append(Candidate(i, False, api(d), api(d)))
     return profile, out
 
 

@@ -179,6 +179,20 @@ makes speaking hard → "Listen back (last 15 s)" while paused instead.
   WDM-KS → DirectSound → MME) → system default; Generic = system default as before. `capture.json` gets `mic_profile`.
   `python -m core.mic_select [--profile id]` prints inputs, the detection and the open order. Dev PC 2026-11-11 with the
   Q2U: detected `samson_q2u`, open order WASAPI #21 excl/shared → WDM-KS #33 → DS #9 → MME #1.
+  Per-mic path + level check (T30): the stream is always 48 kHz mono float32 (the pipeline's rate; no per-mic rate);
+  each profile sets `blocksize` (4800 = 100 ms, the meters assume it), `latency` ("high": bigger driver buffer, no
+  monitor to keep in sync) and `auto_convert` (WASAPI *shared* opens with Windows' converter, so a mic Windows runs
+  at 44.1 kHz still opens at 48 kHz). Exclusive fails while Riverside/Zoom/Teams hold the mic → shared → WDM-KS →
+  DS → MME → default; the log says `input opened: <dev> [<api>, <mode>] ... (fell back from: ...)` and
+  `input closed: ..., N input overflow(s)`; `capture.json` gets `mode`, `blocksize`, `fell_back_from`.
+  `core/mic_check.check_level()` / `python -m core.mic_check --seconds 30 [--profile id]` records through the same
+  MicSource path and judges the mic's own level (before calibration gain): peak < −22 dBFS = quiet (> 12 dB boost),
+  clipped or peak ≥ −2 = too loud, else good; voice < 15 dB over the room adds the mic's room tip; any overflow =
+  not ok. Tips are per profile (`quiet_tip`/`loud_tip`/`room_tip`, built-ins in `mic_profiles.py`): Q2U → Windows
+  level to 100 and 5–10 cm; NT1 → interface gain knob down, ~20 cm, it hears the whole room; Fifine → Windows
+  level 100 + gain knob. Self-test runs the three verdicts on every profile. Dev PC 2026-11-11 with the Q2U:
+  opened WASAPI exclusive first try, stream latency 0.11 s, 0 overflows, room −65.8 dBFS (no speech → "couldn't
+  hear you"). The 30 s speech runs with all three mics (NT1, Fifine not here) are Sam's manual Verify.
 - **Mic calibration (T27, `core/calibration.py`, `ui/calibrate.py`):** Settings → "Check mic" (offered once on first run
   after the T21 mic check passes, and at REC for a mic not yet checked: "Check mic" / "Record anyway", asked once per mic
   per run). Setup checks by device name (WASAPI list + defaults): laptop array / Intel SST vs USB mic (laptop default with

@@ -45,6 +45,15 @@ class MicProfile:
     best_host_api: str = ""              # e.g. "Windows WASAPI"; "" = no preference
     exclusive: bool = False              # try WASAPI exclusive first
     notes: str = ""
+    # T30: how to open it. The stream is always 48 kHz mono float32 (the whole pipeline's rate);
+    # `auto_convert` lets WASAPI *shared* mode use Windows' converter when the mic runs at another rate.
+    blocksize: int = 4800                # frames per callback (100 ms; the live meters assume 100 ms)
+    latency: str | float = "high"        # PortAudio latency hint: "high" = bigger driver buffer = no lost sound
+    auto_convert: bool = True
+    # T30: plain-language tips for the level check (core/mic_check.check_level)
+    quiet_tip: str = ""
+    loud_tip: str = ""
+    room_tip: str = ""
 
     @property
     def is_generic(self) -> bool:
@@ -59,17 +68,40 @@ class MicProfile:
         return 0
 
 
-GENERIC = MicProfile(GENERIC_ID, "Generic", notes="Any other mic: Windows' default input, no assumptions.")
+_SOUND = "Windows Settings → System → Sound → your microphone → Volume"
+
+GENERIC = MicProfile(GENERIC_ID, "Generic", notes="Any other mic: Windows' default input, no assumptions.",
+                     quiet_tip=f"Turn the mic level up ({_SOUND}) to 80–100 and speak a little closer to the mic.",
+                     loud_tip=f"Turn the mic level down ({_SOUND}) a little, or sit a little further back.",
+                     room_tip="Move closer to the mic, and close windows or switch off fans if you can.")
+
+_Q2U_TIPS = dict(
+    quiet_tip=f"The Samson Q2U is a quiet mic. Turn its Windows level to 100 ({_SOUND}) and speak about a "
+              "hand's width (5–10 cm) from the front of the mic.",
+    loud_tip=f"Turn the Q2U's Windows level down to about 80 ({_SOUND}), or sit back a little.",
+    room_tip="Speak closer to the Q2U, and close windows or switch off fans if you can.")
+_NT1_TIPS = dict(
+    quiet_tip="Turn the gain knob on your audio interface up a little (for a USB Rode, turn its Windows level "
+              f"up: {_SOUND}).",
+    loud_tip="The Rode NT1 is very sensitive. Turn the gain knob on your audio interface down until its light "
+             f"stays green (for a USB Rode, turn its Windows level down: {_SOUND}), and sit about 20 cm back.",
+    room_tip="The Rode NT1 hears the whole room. Close windows and doors, switch off fans, and speak a little "
+             "closer to it.")
+_FIFINE_TIPS = dict(
+    quiet_tip=f"Turn the Fifine's Windows level up to 100 ({_SOUND}). If the mic has a gain knob, turn it up "
+              "too, and speak a little closer.",
+    loud_tip=f"Turn the gain knob on the Fifine down (or its Windows level: {_SOUND}), or sit back a little.",
+    room_tip="The Fifine hears the room. Speak closer to it, and close windows or switch off fans if you can.")
 
 BUILTIN_PROFILES: tuple[MicProfile, ...] = (
     MicProfile("samson_q2u", "Samson Q2U", 1, ("q2u",), ("samson",), "dynamic", "usb", -29.5,
-               "Windows WASAPI", True, "Sam's mic."),
+               "Windows WASAPI", True, "Sam's mic.", **_Q2U_TIPS),
     MicProfile("rode_nt1", "Rode NT1", 2, (r"\br(o|ø|\?)de\b", r"\bnt-?1\b", r"nt-?usb"),
                ("scarlett", "focusrite", "audient", r"\bevo\b", "motu", "steinberg", r"\bur(12|22|24)", r"umc\d",
                 "behringer", "presonus", "audiobox", r"volt \d", "universal audio", r"ssl \d", "tascam", "xlr"),
-               "condenser", "usb or xlr (via interface)", -20.0, "Windows WASAPI", True, "Condenser."),
+               "condenser", "usb or xlr (via interface)", -20.0, "Windows WASAPI", True, "Condenser.", **_NT1_TIPS),
     MicProfile("fifine", "Fifine", 3, ("fifine",), (r"usb pnp (sound|audio) device",), "condenser", "usb", -30.0,
-               "Windows WASAPI", True, "Budget USB condenser."),
+               "Windows WASAPI", True, "Budget USB condenser.", **_FIFINE_TIPS),
     GENERIC,
 )
 
@@ -78,18 +110,29 @@ def load_profiles(path: Path | str | None = None) -> list[MicProfile]:
     """Profiles from mics.toml (sorted by priority), always ending with Generic."""
     p = Path(path) if path is not None else DEFAULT_MICS_TOML
     profiles: list[MicProfile] = []
+    builtin = {b.id: b for b in BUILTIN_PROFILES}
     try:
         for m in tomllib.loads(p.read_text(encoding="utf-8")).get("mic", []):
             for pat in (*m.get("patterns", []), *m.get("weak_patterns", [])):
                 re.compile(pat)                           # a bad regex = broken file, use built-ins
             lvl = m.get("expected_speech_dbfs")
+            base = builtin.get(str(m["id"]), GENERIC)            # tips the file leaves out
+            block = int(m.get("blocksize", 4800))
+            if not 480 <= block <= 9600:
+                raise ValueError(f"blocksize {block} for {m['id']} is outside 480..9600")
+            lat = m.get("latency", "high")
+            if not (lat in ("high", "low") or isinstance(lat, (int, float))):
+                raise ValueError(f"latency {lat!r} for {m['id']} must be 'high', 'low' or seconds")
             profiles.append(MicProfile(
                 id=str(m["id"]), name=str(m.get("name", m["id"])), priority=int(m.get("priority", 50)),
                 patterns=tuple(m.get("patterns", [])), weak_patterns=tuple(m.get("weak_patterns", [])),
                 type=str(m.get("type", "unknown")), connection=str(m.get("connection", "unknown")),
                 expected_speech_dbfs=None if lvl is None else float(lvl),
                 best_host_api=str(m.get("best_host_api", "")), exclusive=bool(m.get("exclusive", False)),
-                notes=str(m.get("notes", ""))))
+                notes=str(m.get("notes", "")), blocksize=block, latency=lat,
+                auto_convert=bool(m.get("auto_convert", True)),
+                quiet_tip=str(m.get("quiet_tip", base.quiet_tip)), loud_tip=str(m.get("loud_tip", base.loud_tip)),
+                room_tip=str(m.get("room_tip", base.room_tip))))
     except FileNotFoundError:
         profiles = []
     except Exception:
