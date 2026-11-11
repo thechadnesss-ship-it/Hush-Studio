@@ -220,8 +220,9 @@ def _fake_sd(devices):
     sd = types.ModuleType("sounddevice")
 
     class WasapiSettings:
-        def __init__(self, exclusive=False):
+        def __init__(self, exclusive=False, auto_convert=False):
             self.exclusive = exclusive
+            self.auto_convert = auto_convert
 
     def query_devices(i=None, kind=None):
         return devices if i is None else devices[i]

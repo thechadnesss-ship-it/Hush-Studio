@@ -75,48 +75,82 @@ class MicSource:
                 self.overflows += 1
             on_block(indata[:, 0].copy())          # copy + enqueue only
 
+        from .mic_profiles import GENERIC
         from .mic_select import plan
-        tries: list = []
+        cands: list = []
         try:
             self.profile, cands = plan(list(sd.query_devices()), list(sd.query_hostapis()), self.device,
                                        self.profile_override)
-            tries = [(c.device, sd.WasapiSettings(exclusive=True) if c.exclusive else None, c.label)
-                     for c in cands]
         except Exception:
             log.exception("mic selection failed; using the system default")
+        prof = self.profile or GENERIC
+        tries = [(c.device, _wasapi(sd, c, prof), c.label) for c in cands]
         tries.append((self.device, None, "system default"))      # last resort: the old behaviour
-        mode, err = "", None
+        mode, err, failed = "", None, []
         for dev, extra, label in tries:
             try:
                 self.stream = sd.InputStream(device=dev, samplerate=SR, channels=1, dtype="float32",
-                                             blocksize=BLOCK, callback=cb, extra_settings=extra)
+                                             blocksize=prof.blocksize, latency=prof.latency, callback=cb,
+                                             extra_settings=extra)
                 self.stream.start()
                 mode = label
                 break
             except Exception as e:
                 err = e
+                if self.stream is not None:
+                    try:
+                        self.stream.close()
+                    except Exception:
+                        pass
                 self.stream = None
+                failed.append(label)
+                # exclusive fails while Riverside/Zoom/Teams hold the mic: expected, shared is next
                 log.info("could not open %s (%s): %s", dev, label, e)
         if self.stream is None:
+            log.error("no way to open the microphone worked (tried: %s)", ", ".join(failed))
             raise err
         try:
             d = sd.query_devices(self.stream.device)
             self.info = {"device": d["name"], "host_api": sd.query_hostapis(d["hostapi"])["name"], "mode": mode,
-                         "device_default_rate": d["default_samplerate"], "stream_rate": self.stream.samplerate}
+                         "device_default_rate": d["default_samplerate"], "stream_rate": self.stream.samplerate,
+                         "blocksize": prof.blocksize, "latency": prof.latency}
+            if failed:
+                self.info["fell_back_from"] = failed
+            try:
+                self.info["stream_latency_s"] = round(float(self.stream.latency), 4)
+            except Exception:
+                pass
             if mode == "system default" and not self.profile_override:
                 from .mic_profiles import profile_for_device
                 self.profile = profile_for_device(d["name"])      # what actually opened
             if self.profile is not None:
                 self.info["mic_profile"] = self.profile.id
-            log.info("input opened: %s [%s] %s Hz", self.info["device"], self.info["host_api"], self.info["stream_rate"])
+            log.info("input opened: %s [%s, %s] %s Hz, block %s, latency %s, mic profile %s%s",
+                     self.info["device"], self.info["host_api"], mode, self.info["stream_rate"], prof.blocksize,
+                     self.info.get("stream_latency_s", prof.latency), self.info.get("mic_profile", "?"),
+                     f" (fell back from: {', '.join(failed)})" if failed else "")
         except Exception:
-            self.info = {}
+            self.info = {"mode": mode}
 
     def stop(self):
         if self.stream is not None:
             self.stream.stop()
             self.stream.close()
             self.stream = None
+            log.info("input closed: %s [%s], %d input overflow(s)", self.info.get("device", "?"),
+                     self.info.get("mode", "?"), self.overflows)
+
+
+def _wasapi(sd, cand, profile):
+    """extra_settings for one way of opening the mic: exclusive, or shared with Windows' converter."""
+    if cand.exclusive:
+        return sd.WasapiSettings(exclusive=True)
+    if cand.api == "Windows WASAPI" and profile.auto_convert:
+        try:
+            return sd.WasapiSettings(auto_convert=True)
+        except TypeError:                          # sounddevice < 0.4.6
+            return None
+    return None
 
 
 class ArraySource:
