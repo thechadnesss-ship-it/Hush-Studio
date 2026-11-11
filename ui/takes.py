@@ -174,10 +174,16 @@ class TakesDialog(QDialog):
             return
         filters = (f"Hush take (*{EXPORT_EXT});;WAV audio (*.wav);;FLAC audio (*.flac);;"
                    "MP3 audio (*.mp3);;Finished video (*.mp4)")
-        f, _ = QFileDialog.getSaveFileName(self, "Export take", f"{t.name}{EXPORT_EXT}", filters)
+        f, selected = QFileDialog.getSaveFileName(self, "Export take", f"{t.name}{EXPORT_EXT}", filters)
         if f:
             try:
-                self.lib.export_path(t, Path(f))
+                expected = next((ext for label, ext in (("Hush take", EXPORT_EXT), ("WAV", ".wav"),
+                                                         ("FLAC", ".flac"), ("MP3", ".mp3"),
+                                                         ("Finished video", ".mp4")) if label in selected), None)
+                destination = Path(f)
+                if expected and destination.suffix.lower() != expected:
+                    destination = destination.with_suffix(expected)
+                self.lib.export_path(t, destination)
             except Exception as e:
                 QMessageBox.warning(self, "Takes", str(e))
 
