@@ -1,8 +1,9 @@
 # AGENTS.md — Hush Studio (instructions for Claude Code and Codex)
 
 **Source of truth, in this order:**
-1. `CLAUDE.md` — architecture, product rules, measured decisions. Read it fully before changing code.
-   The core rule: encode each unique media piece once, build the long video by stream-copy. Never
+1. `CLAUDE.md` — architecture and product rules. Read sections 0 and 0.5, the one-paragraph core rule above them, and only the
+   Module/section your task's `context` names. Measurements and implementation history are in `Docs/measurements.md`: read only the
+   bullets the `context` names. Do not read whole files to "get oriented". The core rule: encode each unique media piece once, build the long video by stream-copy. Never
    re-encode the full-length output without Sam's sign-off.
 2. The plan — `Docs/Engine Build Plan/engine_plan.json`, managed by **Narthen Control**
    (repo `Narthen-Control`, local folder `C:\Users\chadj\Narthen-Control`). Tasks, priorities, tiers, decisions.
@@ -44,11 +45,18 @@ Never commit `engine_plan.json` on a task branch; it is committed on `main` only
   and a `--log` entry. The task is then re-reviewed.
 
 ## Working protocol
-- Start: `--next <your name>`, or the task Sam started for you. Read `--show <ID>` and the task's Key files; do not explore the whole repo.
+- Start: `--next <your name>`, or the task Sam started for you. Read `--show <ID>` (it prints the task's `context` and `check`) and the
+  task's Key files; do not explore the whole repo.
+- A task may have a `check` command. `--set <ID> status=Review` runs it (in your worktree) and refuses to set Review if it fails.
+  Fix the failure; never use `--skip-check` unless Sam said so.
+- Reviewers: your last action must be `--set <ID> status=Review notes="Review clean: ..."` or `--request-changes`, and you must see it
+  succeed. A review that ends without one is thrown away.
 - Respect the usage budget: if `--next` reports you are over budget for the tier, stop and tell Sam.
 - Stay inside the claimed task's scope. New work you discover becomes a new task in the plan, not extra work in this one.
 - Finish: acceptance criteria met, Verify command run, tests green, commit on your branch, then
   `--set <ID> status=Review notes="..."` and a `--log` entry. Anything needing Sam's judgment: add a decision, or set `status=Blocked` with the reason in notes.
-- Facts learned (measurements, decisions) go into the matching section of `CLAUDE.md`, not into chat.
+- Facts learned (measurements, decisions) go into the matching bullet of `Docs/measurements.md` (architecture changes: `CLAUDE.md`), not into chat.
+- New tasks need a `context` (5-10 lines: which CLAUDE.md / measurements bullets matter, constraints, gotchas) and, where a command
+  can prove the work, a `check`: `--set <ID> context="..." check="..."`.
 - Deleting files, rewriting git history and changing `CLAUDE.md`'s core rules need Sam's approval.
 - Sam's control panel: the **Narthen Control** icon on her desktop.
